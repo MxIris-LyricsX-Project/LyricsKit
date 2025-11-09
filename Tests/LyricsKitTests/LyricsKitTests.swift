@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import LyricsService
 
 let testSong = "Over"
@@ -31,5 +32,21 @@ struct LyricsKitTests {
     @Test
     func netEaseProvider() async throws {
         try await test(provider: LyricsProviders.NetEase())
+    }
+
+    @Test
+    func musixmatchProvider() async throws {
+        // set MUSIXMATCH_TOKEN in env to enable test
+        let env = ProcessInfo.processInfo.environment
+        if let token = env["MUSIXMATCH_TOKEN"], !token.isEmpty {
+            await AuthenticationManagerStore.shared.setMusixmatchToken(token)
+
+            // Alternatively you can construct provider with explicit token:
+            // let provider = LyricsProviders.Musixmatch(usertoken: token)
+
+            try await test(provider: LyricsProviders.Musixmatch())
+        } else {
+            print("Skipping MusixmatchProvider test: set MUSIXMATCH_TOKEN in env to enable")
+        }
     }
 }

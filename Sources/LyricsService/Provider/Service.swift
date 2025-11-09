@@ -5,6 +5,7 @@ extension LyricsProviders {
         case qq
         case netease
         case kugou
+        case musixmatch
         case lrclib
         case spotify
 
@@ -13,6 +14,7 @@ extension LyricsProviders {
             case .netease: return "Netease"
             case .qq: return "QQMusic"
             case .kugou: return "Kugou"
+            case .musixmatch: return "Musixmatch"
             case .lrclib: return "LRCLIB"
             case .spotify: return "Spotify"
             }
@@ -25,6 +27,7 @@ extension LyricsProviders {
             case .qq,
                  .netease,
                  .kugou,
+                 .musixmatch,
                  .lrclib:
                 return false
             }
@@ -35,6 +38,7 @@ extension LyricsProviders {
                 .qq,
                 .netease,
                 .kugou,
+                .musixmatch,
                 .lrclib,
             ]
         }
@@ -53,6 +57,7 @@ extension LyricsProviders.Service {
         case .netease: return LyricsProviders.NetEase()
         case .qq: return LyricsProviders.QQMusic()
         case .kugou: return LyricsProviders.Kugou()
+        case .musixmatch: return LyricsProviders.Musixmatch()
         case .spotify: return LyricsProviders.Spotify()
         case .lrclib: return LyricsProviders.LRCLIB()
         }
@@ -70,6 +75,7 @@ extension LyricsProviders.Service {
         case .netease,
              .qq,
              .kugou,
+             .musixmatch,
              .lrclib:
             return create()
         }
