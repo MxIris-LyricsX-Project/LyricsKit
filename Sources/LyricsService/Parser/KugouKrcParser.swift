@@ -22,7 +22,7 @@ extension Lyrics {
             }
         }
 
-        var lines: [LyricsLine] = krcLineRegex.matches(in: content).map { match in
+        let lines: [LyricsLine] = krcLineRegex.matches(in: content).map { match in
             let timeTagStr = match[1]!.content
             let timeTag = TimeInterval(timeTagStr)! / 1000
 
@@ -51,12 +51,12 @@ extension Lyrics {
         }
         self.init(lines: lines, idTags: idTags)
 
-        // TODO: multiple translation
-        if let transContent = languageHeader?.content.first?.lyricContent {
-            transContent.prefix(lines.count).enumerated().forEach { index, item in
-                guard !item.isEmpty else { return }
-                let str = item.joined(separator: " ")
-                lines[index].attachments[.translation()] = str
+        // type == 1 indicates a translation; type == 0 indicates romanization/phonetics.
+        if let transContent = languageHeader?.content.first(where: { $0.type == 1 })?.lyricContent {
+            transContent.prefix(self.lines.count).enumerated().forEach { index, item in
+                let str = item.joined(separator: "").trimmingCharacters(in: .whitespaces)
+                guard !str.isEmpty else { return }
+                self.lines[index].attachments[.translation()] = str
             }
             metadata.attachmentTags.insert(.translation())
         }
