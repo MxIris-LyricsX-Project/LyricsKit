@@ -125,8 +125,14 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
 
         let decodedContents = decodeLyricContents(from: xmlDocument)
 
-        guard let origContent = decodedContents["orig"],
-              let lrc = Lyrics(qqmusicQrcContent: origContent) ?? Lyrics(origContent) else {
+        guard let origContent = decodedContents["orig"] else {
+            throw LyricsProviderError.processingFailed(reason: "Failed to parse or decrypt QQMusic QRC lyrics.")
+        }
+
+        let normalizedOrigContent = normalizeExtendedLrcTimestamps(origContent)
+        guard let lrc = Lyrics(qqmusicQrcContent: origContent)
+            ?? Lyrics(origContent)
+            ?? Lyrics(normalizedOrigContent) else {
             throw LyricsProviderError.processingFailed(reason: "Failed to parse or decrypt QQMusic QRC lyrics.")
         }
 
@@ -213,10 +219,26 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
         let marker = "LyricContent=\""
         guard let markerRange = xmlString.range(of: marker) else { return nil }
         let afterMarker = xmlString[markerRange.upperBound...]
-        // The attribute value ends at the first unescaped double-quote.
-        // QRC lyrics do not contain literal double-quote characters, so a simple
-        // search for the next `"` is safe here.
-        guard let endQuote = afterMarker.firstIndex(of: "\"") else { return nil }
+
+        var escaped = false
+        var endQuote: String.Index?
+        for idx in afterMarker.indices {
+            let c = afterMarker[idx]
+            if escaped {
+                escaped = false
+                continue
+            }
+            if c == "\\" {
+                escaped = true
+                continue
+            }
+            if c == "\"" {
+                endQuote = idx
+                break
+            }
+        }
+
+        guard let endQuote else { return nil }
         let content = String(afterMarker[..<endQuote])
         return content.isEmpty ? nil : content
     }
@@ -256,5 +278,36 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
         }
         let albumMid = response.songinfo.data.trackInfo.album.mid
         return URL(string: "https://y.gtimg.cn/music/photo_new/T002R800x800M000\(albumMid).jpg")
+    }
+
+    // Some QQ fallback lyrics use [HH:MM:SS(.xx)] timestamps, while Lyrics parser
+    // accepts [MM:SS(.xx)]. Convert hours into minutes for compatibility.
+    private func normalizeExtendedLrcTimestamps(_ content: String) -> String {
+        let pattern = #"\[(\d+):(\d{2}):(\d{2}(?:\.\d+)?)\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return content
+        }
+
+        let nsContent = content as NSString
+        let matches = regex.matches(in: content, range: NSRange(location: 0, length: nsContent.length))
+        guard !matches.isEmpty else {
+            return content
+        }
+
+        var normalized = content
+        for match in matches.reversed() {
+            guard match.numberOfRanges == 4 else { continue }
+            let h = nsContent.substring(with: match.range(at: 1))
+            let m = nsContent.substring(with: match.range(at: 2))
+            let s = nsContent.substring(with: match.range(at: 3))
+            guard let hour = Int(h), let minute = Int(m) else { continue }
+            let mergedMinute = hour * 60 + minute
+            let replacement = "[\(mergedMinute):\(s)]"
+            if let range = Range(match.range, in: normalized) {
+                normalized.replaceSubrange(range, with: replacement)
+            }
+        }
+
+        return normalized
     }
 }
