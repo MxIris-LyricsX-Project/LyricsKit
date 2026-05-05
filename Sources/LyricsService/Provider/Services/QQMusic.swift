@@ -123,9 +123,16 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
             throw LyricsProviderError.processingFailed(reason: "Failed to parse QQMusic XML response.")
         }
 
-        // Extract the main (original) lyrics.
-        guard let origContent = extractLyricContent(from: xmlDocument, xpath: "//content"),
-              let lrc = Lyrics(qqmusicQrcContent: origContent) else {
+        let decodedContents = decodeLyricContents(from: xmlDocument)
+
+        guard let origContent = decodedContents["orig"] else {
+            throw LyricsProviderError.processingFailed(reason: "Failed to parse or decrypt QQMusic QRC lyrics.")
+        }
+
+        let normalizedOrigContent = normalizeExtendedLrcTimestamps(origContent)
+        guard let lrc = Lyrics(qqmusicQrcContent: origContent)
+            ?? Lyrics(origContent)
+            ?? Lyrics(normalizedOrigContent) else {
             throw LyricsProviderError.processingFailed(reason: "Failed to parse or decrypt QQMusic QRC lyrics.")
         }
 
@@ -134,8 +141,7 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
         lrc.metadata.serviceToken = "\(token.mid)"
         lrc.metadata.artworkURL = await fetchAlbumCoverURL(songMid: token.mid)
 
-        // Merge translated lyrics when available (contentts element).
-        if let transContent = extractLyricContent(from: xmlDocument, xpath: "//contentts"),
+        if let transContent = decodedContents["ts"],
            let transLrc = Lyrics(transContent) {
             lrc.merge(translation: transLrc)
         }
@@ -143,44 +149,68 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
         return lrc
     }
 
-    /// Reads the text of the XML element at `xpath`, decrypts it (if hex-encoded),
-    /// and unwraps any nested XML document.
-    ///
-    /// - Returns: The ready-to-parse lyric string, or `nil` if anything goes wrong.
-    private func extractLyricContent(from document: XMLDocument, xpath: String) -> String? {
-        guard let node = (try? document.nodes(forXPath: xpath))?.first,
-              let text = node.stringValue else { return nil }
+    private func decodeLyricContents(from document: XMLDocument) -> [String: String] {
+        let mappings: [(xpath: String, key: String)] = [
+            ("//content", "orig"),
+            ("//contentts", "ts"),
+        ]
+        var result: [String: String] = [:]
 
+        for mapping in mappings {
+            guard let node = (try? document.nodes(forXPath: mapping.xpath))?.first,
+                  let text = node.stringValue,
+                  let decoded = decodeSingleLyricText(text) else {
+                continue
+            }
+            result[mapping.key] = decoded
+        }
+
+        return result
+    }
+
+    private func decodeSingleLyricText(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        // Even length, every character in [0-9 a-f A-F].
-        let isHex = trimmed.count % 2 == 0 && trimmed.allSatisfy { $0.isHexDigit }
+        let compact = trimmed.replacingOccurrences(
+            of: "\\s+",
+            with: "",
+            options: .regularExpression
+        )
 
         let decoded: String
-        if isHex {
-            // Triple-DES decrypt + zlib inflate.
-            guard let decrypted = decryptQQMusicQrc(trimmed) else { return nil }
-            decoded = decrypted
+        if isStrictHex(compact) {
+            guard let decryptText = decryptQQMusicQrc(compact) else { return nil }
+            decoded = decryptText
         } else {
-            // Content is already plaintext (e.g. an LRC block passed without encryption).
             decoded = trimmed
         }
 
-        // Some responses embed the real QRC data one level deeper inside a second XML
-        // document — the lyrics live in the LyricContent attribute of <Lyric_1/>.
-        //
-        // IMPORTANT: We must NOT use XMLDocument to read this attribute, because the
-        // XML spec requires parsers to normalize attribute values by replacing literal
-        // newlines with spaces.  The QRC parser relies on real newlines, so we extract
-        // the attribute value directly from the raw decoded string instead.
-        if decoded.contains("<?xml") {
-            if let content = extractLyricContentAttribute(from: decoded) {
-                return content
-            }
+        guard decoded.contains("<?xml") else {
+            return decoded
+        }
+
+        if let nestedDoc = try? XMLUtils.create(content: decoded),
+           let lyricNode = (try? nestedDoc.nodes(forXPath: "//*[@LyricContent]"))?.first as? XMLElement,
+           let content = lyricNode.attribute(forName: "LyricContent")?.stringValue,
+           !content.isEmpty {
+            let formatted = lyricFormat(content)
+            return normalizeQQQrcContent(formatted)
+        }
+
+        if let content = extractLyricContentAttribute(from: decoded), !content.isEmpty {
+            let formatted = lyricFormat(content)
+            return normalizeQQQrcContent(formatted)
         }
 
         return decoded
+    }
+
+    private func normalizeQQQrcContent(_ content: String) -> String {
+        return content
+            .replacingOccurrences(of: #"\s+(?=\[\d+,\d+\])"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"\]\s+\["#, with: "]\n[", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Extracts the value of the `LyricContent` attribute from a raw XML string
@@ -189,12 +219,42 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
         let marker = "LyricContent=\""
         guard let markerRange = xmlString.range(of: marker) else { return nil }
         let afterMarker = xmlString[markerRange.upperBound...]
-        // The attribute value ends at the first unescaped double-quote.
-        // QRC lyrics do not contain literal double-quote characters, so a simple
-        // search for the next `"` is safe here.
-        guard let endQuote = afterMarker.firstIndex(of: "\"") else { return nil }
+
+        var escaped = false
+        var endQuote: String.Index?
+        for idx in afterMarker.indices {
+            let c = afterMarker[idx]
+            if escaped {
+                escaped = false
+                continue
+            }
+            if c == "\\" {
+                escaped = true
+                continue
+            }
+            if c == "\"" {
+                endQuote = idx
+                break
+            }
+        }
+
+        guard let endQuote else { return nil }
         let content = String(afterMarker[..<endQuote])
         return content.isEmpty ? nil : content
+    }
+
+    private func isStrictHex(_ s: String) -> Bool {
+        guard !s.isEmpty, s.count % 2 == 0 else {
+            return false
+        }
+
+        for c in s {
+            if !(c.isNumber || (c >= "a" && c <= "f") || (c >= "A" && c <= "F")) {
+                return false
+            }
+        }
+
+        return true
     }
 
     private func fetchAlbumCoverURL(songMid: String) async -> URL? {
@@ -218,5 +278,36 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
         }
         let albumMid = response.songinfo.data.trackInfo.album.mid
         return URL(string: "https://y.gtimg.cn/music/photo_new/T002R800x800M000\(albumMid).jpg")
+    }
+
+    // Some QQ fallback lyrics use [HH:MM:SS(.xx)] timestamps, while Lyrics parser
+    // accepts [MM:SS(.xx)]. Convert hours into minutes for compatibility.
+    private func normalizeExtendedLrcTimestamps(_ content: String) -> String {
+        let pattern = #"\[(\d+):(\d{2}):(\d{2}(?:\.\d+)?)\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return content
+        }
+
+        let nsContent = content as NSString
+        let matches = regex.matches(in: content, range: NSRange(location: 0, length: nsContent.length))
+        guard !matches.isEmpty else {
+            return content
+        }
+
+        var normalized = content
+        for match in matches.reversed() {
+            guard match.numberOfRanges == 4 else { continue }
+            let h = nsContent.substring(with: match.range(at: 1))
+            let m = nsContent.substring(with: match.range(at: 2))
+            let s = nsContent.substring(with: match.range(at: 3))
+            guard let hour = Int(h), let minute = Int(m) else { continue }
+            let mergedMinute = hour * 60 + minute
+            let replacement = "[\(mergedMinute):\(s)]"
+            if let range = Range(match.range, in: normalized) {
+                normalized.replaceSubrange(range, with: replacement)
+            }
+        }
+
+        return normalized
     }
 }
