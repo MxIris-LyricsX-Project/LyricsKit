@@ -2,7 +2,7 @@ import Foundation
 import Regex
 
 // swiftlint:disable force_try
-private let timeTagRegex = try! Regex(#"\[([-+]?\d+):(\d+(?:\.\d+)?)\]"#)
+private let timeTagRegex = Regex(#"\[([-+]?\d+):(\d+(?:\.\d+)?)\]"#)
 
 func resolveTimeTag(_ str: String) -> [TimeInterval] {
     let matchs = timeTagRegex.matches(in: str)
@@ -17,13 +17,13 @@ let id3TagRegex = try! Regex(#"^(?!\[[+-]?\d+:\d+(?:\.\d+)?\])\[(.+?):(.+)\]$"#,
 
 let krcLineRegex = try! Regex(#"^\[(\d+),(\d+)\](.*)"#, options: .anchorsMatchLines)
 
-let qrcLineRegex = try! Regex(#"^\[(\d+),(\d+)\](.*)"#, options: [.anchorsMatchLines])
+let qrcLineRegex = Regex(#"^\[(\d+),(\d+)\](.*)"#, options: [.anchorsMatchLines])
 
-let netEaseYrcInlineTagRegex = try! Regex(#"\((\d+),(\d+),0\)([^(]*)"#)
+let netEaseYrcInlineTagRegex = Regex(#"\((\d+),(\d+),0\)([^(]*)"#)
 
-let netEaseInlineTagRegex = try! Regex(#"\(0,(\d+)\)([^(]+)(\(0,1\) )?"#)
+let netEaseInlineTagRegex = Regex(#"\(0,(\d+)\)([^(]+)(\(0,1\) )?"#)
 
-let kugouInlineTagRegex = try! Regex(#"<(\d+),(\d+),0>([^<]*)"#)
+let kugouInlineTagRegex = Regex(#"<(\d+),(\d+),0>([^<]*)"#)
 
-let qqmusicInlineTagRegex = try! Regex(#"([^(]*)\((\d+),(\d+)\)"#)
+let qqmusicInlineTagRegex = Regex(#"([^(]*)\((\d+),(\d+)\)"#)
 // swiftlint:enable force_try

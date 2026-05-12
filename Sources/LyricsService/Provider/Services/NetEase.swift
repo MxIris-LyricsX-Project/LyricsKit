@@ -132,7 +132,7 @@ extension LyricsProviders.NetEase: _LyricsProvider {
     }
 }
 
-private let netEaseTimeTagFixer = try! Regex(#"(\[\d+:\d+):(\d+\])"#) // swiftlint:disable:this force_try
+private let netEaseTimeTagFixer = Regex(#"(\[\d+:\d+):(\d+\])"#) // swiftlint:disable:this force_try
 
 extension NetEaseResponseSingleLyrics.Lyric {
     fileprivate var fixedLyric: String? {
