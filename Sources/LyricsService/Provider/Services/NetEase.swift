@@ -3,8 +3,10 @@ import LyricsCore
 import Regex
 import BigInt
 import CryptoSwift
+import FoundationToolbox
 
 extension LyricsProviders {
+    @Loggable
     public final class NetEase {
         private let searchBaseURLString = "http://music.163.com/api/search/pc?"
 
@@ -138,6 +140,7 @@ extension NetEaseResponseSingleLyrics.Lyric {
     }
 }
 
+@Loggable
 private enum EapiHelper {
     private static let userAgent = "Mozilla/5.0 (Linux; Android 9; PCT-AL10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.64 HuaweiBrowser/10.0.3.311 Mobile Safari/537.36"
     private static let eapiKey = "e82ckenh8dichen8".data(using: .ascii)!
@@ -230,7 +233,7 @@ private enum EapiHelper {
 
             return Data(encrypted)
         } catch {
-            print("AES ECB encryption error: \(error)")
+            #log(.error, "AES ECB encryption error: \(error)")
             return Data()
         }
     }
@@ -245,7 +248,7 @@ private enum EapiHelper {
 
             return Data(decrypted)
         } catch {
-            print("AES ECB decryption error: \(error)")
+            #log(.error, "AES ECB decryption error: \(error)")
             return nil
         }
     }

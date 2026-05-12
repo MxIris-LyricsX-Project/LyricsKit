@@ -1,8 +1,10 @@
 import Foundation
 import Regex
 import LyricsCore
+import FoundationToolbox
 
 extension LyricsProviders {
+    @Loggable
     public final class Spotify {
         var authenticationManager: AuthenticationManager?
 
@@ -55,7 +57,7 @@ extension LyricsProviders.Spotify: _LyricsProvider {
         do {
             let (data, _) = try await URLSession.shared.data(for: req)
             let result = try JSONDecoder().decode(SpotifyResponseSearchResult.self, from: data)
-            print(result)
+            #log(.debug, "Spotify search result: \(String(describing: result))")
             return result.tracks.items.map { LyricsToken(value: $0) }
         } catch let error as DecodingError {
             throw LyricsProviderError.decodingError(underlyingError: error)
@@ -79,11 +81,11 @@ extension LyricsProviders.Spotify: _LyricsProvider {
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
             if let jsonString = String(data: data, encoding: .utf8) {
-                print("Spotify Received JSON: \(jsonString)")
+                #log(.debug, "Spotify Received JSON: \(jsonString)")
             }
             singleLyricsResponse = try JSONDecoder().decode(SpotifyResponseSingleLyrics.self, from: data)
         } catch let error as DecodingError {
-            print("Spotify Decode error: \(error)")
+            #log(.error, "Spotify Decode error: \(error)")
             throw LyricsProviderError.decodingError(underlyingError: error)
         } catch {
             throw LyricsProviderError.networkError(underlyingError: error)

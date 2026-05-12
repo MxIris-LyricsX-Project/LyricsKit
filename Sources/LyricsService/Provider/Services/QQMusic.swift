@@ -1,5 +1,6 @@
 import Foundation
 import LyricsCore
+import FoundationToolbox
 
 private let qqSearchBaseURLString1 = "https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg"
 private let qqSearchBaseURLString2 = "https://u.y.qq.com/cgi-bin/musicu.fcg"
@@ -7,6 +8,7 @@ private let qqLyricsBaseURLString1 = "https://c.y.qq.com/lyric/fcgi-bin/fcg_quer
 private let qqLyricsBaseURLString2 = "https://c.y.qq.com/qqmusic/fcgi-bin/lyric_download.fcg"
 
 extension LyricsProviders {
+    @Loggable
     public final class QQMusic {
         public init() {}
     }
@@ -48,7 +50,7 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
             let result = try JSONDecoder().decode(QQResponseSearchResult.self, from: data)
             return result.data.song.list.map { LyricsToken(value: $0) }
         } catch {
-            print("QQMusic search API 1 failed: \(error)")
+            #log(.error, "QQMusic search API 1 failed: \(error)")
             return []
         }
     }
@@ -82,7 +84,7 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
             guard result.request.code == 0 else { return [] }
             return result.request.data.body.song.list.map { LyricsToken(value: $0) }
         } catch {
-            print("QQMusic search API 2 failed: \(error)")
+            #log(.error, "QQMusic search API 2 failed: \(error)")
             return []
         }
     }

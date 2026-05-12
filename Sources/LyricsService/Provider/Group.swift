@@ -1,7 +1,9 @@
 import Foundation
 import LyricsCore
+import FoundationToolbox
 
 extension LyricsProviders {
+    @Loggable
     public final class Group: LyricsProvider {
         public let providers: [LyricsProvider]
 
@@ -22,7 +24,7 @@ extension LyricsProviders {
                                 continuation.yield(lyric)
                             }
                         } catch {
-                            print("A provider in the group failed: \(error)")
+                            #log(.error, "A provider in the group failed: \(error)")
                         }
                     }
                     continuation.finish()

@@ -1,5 +1,6 @@
 import Foundation
 import LyricsCore
+import FoundationToolbox
 
 public enum LyricsProviders {}
 
@@ -15,6 +16,13 @@ public protocol _LyricsProvider: LyricsProvider {
     func search(for request: LyricsSearchRequest) async throws -> [LyricsToken]
 
     func fetch(with token: LyricsToken) async throws -> Lyrics
+}
+
+@Loggable
+private enum LyricsProviderLog {
+    static func fetchTaskFailed(_ error: any Error) {
+        #log(.error, "A fetch task failed, skipping. Error: \(error)")
+    }
 }
 
 extension _LyricsProvider {
@@ -39,7 +47,7 @@ extension _LyricsProvider {
                             let lyric = try await task.value
                             continuation.yield(lyric)
                         } catch {
-                            print("A fetch task failed, skipping. Error: \(error)")
+                            LyricsProviderLog.fetchTaskFailed(error)
                         }
                     }
 
