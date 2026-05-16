@@ -15,7 +15,7 @@ func resolveTimeTag(_ str: String) -> [TimeInterval] {
 
 let id3TagRegex = try! Regex(#"^(?!\[[+-]?\d+:\d+(?:\.\d+)?\])\[(.+?):(.+)\]$"#, options: .anchorsMatchLines)
 
-let lyricsLineRegex = try! Regex(#"^((?:\[[+-]?\d+:\d+(?:\.\d+)?\])+)(?!\[)([^【\n\r]*)(?:【(.*)】)?"#, options: .anchorsMatchLines)
+let lyricsLineRegex = try! Regex(#"^(\[[+-]?\d+:\d+(?:\.\d+)?\])+(?!\[)([^【\n\r]*)(?:【(.*)】)?"#, options: .anchorsMatchLines)
 
 let base60TimeRegex = try! Regex(#"^\s*(?:(\d+):)?(\d+(?:.\d+)?)\s*$"#)
 
