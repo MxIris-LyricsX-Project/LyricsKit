@@ -16,22 +16,22 @@ struct LyricsKitTests {
 
     @Test
     func qqMusicProvider() async throws {
-        try await test(provider: LyricsProviders.QQMusic())
+        try await test(provider: LyricsProviders.Service.qq.create())
     }
 
     @Test
     func LRCLIBProvider() async throws {
-        try await test(provider: LyricsProviders.LRCLIB())
+        try await test(provider: LyricsProviders.Service.lrclib.create())
     }
 
     @Test
     func kugouProvider() async throws {
-        try await test(provider: LyricsProviders.Kugou())
+        try await test(provider: LyricsProviders.Service.kugou.create())
     }
 
     @Test
     func netEaseProvider() async throws {
-        try await test(provider: LyricsProviders.NetEase())
+        try await test(provider: LyricsProviders.Service.netease.create())
     }
 
     @Test
@@ -39,12 +39,8 @@ struct LyricsKitTests {
         // set MUSIXMATCH_TOKEN in env to enable test
         let env = ProcessInfo.processInfo.environment
         if let token = env["MUSIXMATCH_TOKEN"], !token.isEmpty {
-            await AuthenticationManagerStore.shared.setMusixmatchToken(token)
-
-            // Alternatively you can construct provider with explicit token:
-            // let provider = LyricsProviders.Musixmatch(usertoken: token)
-
-            try await test(provider: LyricsProviders.Musixmatch())
+            let provider = LyricsProviders.Service.musixmatch.create(.init(usertoken: token))
+            try await test(provider: provider)
         } else {
             print("Skipping MusixmatchProvider test: set MUSIXMATCH_TOKEN in env to enable")
         }

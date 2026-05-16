@@ -4,8 +4,7 @@ import LyricsService
 
 import CoreGraphics
 
-@available(OSX 10.10, iOS 8, tvOS 2, *)
-extension LyricsProviders.Service {
+extension LyricsProviders.ServiceID {
     fileprivate var drawingMethod: ((CGRect) -> Void)? {
         switch self {
         case .netease:
@@ -29,7 +28,7 @@ import Cocoa
 extension LyricsSourceIconDrawing {
     public static let defaultSize = CGSize(width: 48, height: 48)
 
-    public static func icon(of service: LyricsProviders.Service, size: CGSize = defaultSize) -> NSImage {
+    public static func icon(of service: LyricsProviders.ServiceID, size: CGSize = defaultSize) -> NSImage {
         return NSImage(size: size, flipped: false) { NSRect -> Bool in
             service.drawingMethod?(CGRect(origin: .zero, size: size))
             return true
@@ -44,7 +43,7 @@ import UIKit
 extension LyricsSourceIconDrawing {
     public static let defaultSize = CGSize(width: 48, height: 48)
 
-    public static func icon(of service: LyricsProviders.Service, size: CGSize = defaultSize) -> UIImage {
+    public static func icon(of service: LyricsProviders.ServiceID, size: CGSize = defaultSize) -> UIImage {
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
         service.drawingMethod?(CGRect(origin: .zero, size: size))
         let image = UIGraphicsGetImageFromCurrentImageContext()?.withRenderingMode(.alwaysOriginal)

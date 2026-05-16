@@ -2,20 +2,26 @@ import Foundation
 import LyricsCore
 
 extension LyricsProviders {
-    public final class Musixmatch {
-        private let baseURL = URL(string: "https://apic-desktop.musixmatch.com/ws/1.1/")!
+    public struct MusixmatchOptions: LyricsProviderOptions {
+        public var usertoken: String?
 
-        private lazy var searchURL: URL = {
-            return baseURL.appendingPathComponent("track.search")
-        }()
+        public init() {}
 
-        private lazy var lyricsURL: URL = {
-            return baseURL.appendingPathComponent("macro.subtitles.get")
-        }()
+        public init(usertoken: String?) {
+            self.usertoken = usertoken
+        }
+    }
 
-        private let usertokenOverride: String?
+    final class Musixmatch {
+        private static let baseURL = URL(string: "https://apic-desktop.musixmatch.com/ws/1.1/")!
 
-        private func commonQueryItems() async -> [URLQueryItem] {
+        private static let searchURL = baseURL.appendingPathComponent("track.search")
+
+        private static let lyricsURL = baseURL.appendingPathComponent("macro.subtitles.get")
+
+        private let options: MusixmatchOptions
+
+        private func commonQueryItems() -> [URLQueryItem] {
             var items: [URLQueryItem] = [
                 URLQueryItem(name: "format", value: "json"),
                 URLQueryItem(name: "namespace", value: "lyrics_richsynched"),
@@ -23,15 +29,7 @@ extension LyricsProviders {
                 URLQueryItem(name: "app_id", value: "web-desktop-app-v1.0"),
             ]
 
-            // Prefer the explicitly provided token; fallback to the shared store.
-            let token: String?
-            if let override = usertokenOverride {
-                token = override
-            } else {
-                token = await AuthenticationManagerStore.shared.musixmatchToken()
-            }
-
-            if let token = token {
+            if let token = options.usertoken {
                 items.append(URLQueryItem(name: "usertoken", value: token))
             }
 
@@ -43,20 +41,27 @@ extension LyricsProviders {
             "cookie": "x-mxm-token-guid=",
         ]
 
-        public init(usertoken: String? = nil) {
-            self.usertokenOverride = usertoken
+        init(options: MusixmatchOptions = .init()) {
+            self.options = options
         }
     }
 }
 
+extension LyricsProviders.Service where Options == LyricsProviders.MusixmatchOptions {
+    public static let musixmatch = Self(
+        id: .musixmatch,
+        factory: { LyricsProviders.Musixmatch(options: $0) }
+    )
+}
+
 extension LyricsProviders.Musixmatch: _LyricsProvider {
-    public struct LyricsToken {
+    struct LyricsToken {
         let value: MusixmatchResponseSearchResult.Track
     }
 
-    public static let service = "Musixmatch"
+    static let service = "Musixmatch"
 
-    public func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
+    func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         // Build URL with query items
         let queryItems: [URLQueryItem]
         switch request.searchTerm {
@@ -74,13 +79,12 @@ extension LyricsProviders.Musixmatch: _LyricsProvider {
         }
 
         var urlComponents = URLComponents(
-            url: searchURL,
+            url: Self.searchURL,
             resolvingAgainstBaseURL: false
         )
-        let common = await commonQueryItems()
-        urlComponents?.queryItems = common + queryItems
+        urlComponents?.queryItems = commonQueryItems() + queryItems
         guard let url = urlComponents?.url else {
-            throw LyricsProviderError.invalidURL(urlString: searchURL.absoluteString)
+            throw LyricsProviderError.invalidURL(urlString: Self.searchURL.absoluteString)
         }
 
         var urlRequest = URLRequest(url: url)
@@ -91,12 +95,12 @@ extension LyricsProviders.Musixmatch: _LyricsProvider {
             // Request
             let (data, _) = try await URLSession.shared.data(for: urlRequest)
             let apiResponse = try JSONDecoder().decode(
-                MusixmatchResponseSearchResult.self, from: data)
+                MusixmatchResponseSearchResult.self, from: data
+            )
 
             // Check token validity
-            if apiResponse.message.header.statusCode != 200
-                && apiResponse.message.header.hint == "renew"
-            {
+            if apiResponse.message.header.statusCode != 200,
+               apiResponse.message.header.hint == "renew" {
                 throw LyricsProviderError.processingFailed(reason: "Invalid Musixmatch token")
             }
 
@@ -110,7 +114,7 @@ extension LyricsProviders.Musixmatch: _LyricsProvider {
         }
     }
 
-    public func fetch(with token: LyricsToken) async throws -> Lyrics {
+    func fetch(with token: LyricsToken) async throws -> Lyrics {
         // Check if synced lyrics are available
         if token.value.hasSubtitles == 0 {
             throw LyricsProviderError.processingFailed(reason: "Lyrics not found")
@@ -134,13 +138,12 @@ extension LyricsProviders.Musixmatch: _LyricsProvider {
         ]
 
         var urlComponents = URLComponents(
-            url: lyricsURL,
+            url: Self.lyricsURL,
             resolvingAgainstBaseURL: false
         )
-        let common = await commonQueryItems()
-        urlComponents?.queryItems = common + queryItems
+        urlComponents?.queryItems = commonQueryItems() + queryItems
         guard let url = urlComponents?.url else {
-            throw LyricsProviderError.invalidURL(urlString: lyricsURL.absoluteString)
+            throw LyricsProviderError.invalidURL(urlString: Self.lyricsURL.absoluteString)
         }
 
         var urlRequest = URLRequest(url: url)
@@ -151,12 +154,12 @@ extension LyricsProviders.Musixmatch: _LyricsProvider {
             // Request
             let (data, _) = try await URLSession.shared.data(for: urlRequest)
             let apiResponse = try JSONDecoder().decode(
-                MusixmatchResponseSingleLyrics.self, from: data)
+                MusixmatchResponseSingleLyrics.self, from: data
+            )
 
             // Check token validity
             if apiResponse.message.header.statusCode != 200
-                && apiResponse.message.header.hint == "renew"
-            {
+                && apiResponse.message.header.hint == "renew" {
                 throw LyricsProviderError.processingFailed(reason: "Invalid Musixmatch token")
             }
 
@@ -167,7 +170,7 @@ extension LyricsProviders.Musixmatch: _LyricsProvider {
                 body.trackSubtitlesGet?.message.header.statusCode == 200,
                 body.matcherTrackGet?.message.header.statusCode == 200,
                 let subtitle = body.trackSubtitlesGet?.message.body.subtitleList?.first?.subtitle
-                    .subtitleBody,
+                .subtitleBody,
                 let track = body.matcherTrackGet?.message.body.track
             else {
                 throw LyricsProviderError.processingFailed(reason: "Lyrics not found")

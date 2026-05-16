@@ -7,11 +7,7 @@ extension LyricsProviders {
     public final class Group: LyricsProvider {
         public let providers: [LyricsProvider]
 
-        public init(service: [LyricsProviders.Service] = LyricsProviders.Service.noAuthenticationRequiredServices) {
-            self.providers = service.map { $0.create() }
-        }
-
-        public init(providers: [LyricsProvider]) {
+        public init(providers: [LyricsProvider] = []) {
             self.providers = providers
         }
 
