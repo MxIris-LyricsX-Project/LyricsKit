@@ -7,24 +7,24 @@ import FoundationToolbox
 
 extension LyricsProviders {
     @Loggable
-    public final class NetEase {
+    final class NetEase {
         private let searchBaseURLString = "http://music.163.com/api/search/pc?"
 
 //        private let lyricsBaseURLString = "http://music.163.com/api/song/lyric?"
         private let lyricsBaseURLString = "https://interface3.music.163.com/eapi/song/lyric/v1"
 
-        public init() {}
+        init() {}
     }
 }
 
 extension LyricsProviders.NetEase: _LyricsProvider {
-    public struct LyricsToken {
+    struct LyricsToken {
         let value: NetEaseResponseSearchResult.Result.Song
     }
 
-    public static let service: String = "NetEase"
+    static let service: String = "NetEase"
 
-    public func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
+    func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         let parameter: [String: Any] = [
             "s": request.searchTerm.description,
             "offset": 0,
@@ -71,7 +71,7 @@ extension LyricsProviders.NetEase: _LyricsProvider {
         }
     }
 
-    public func fetch(with token: LyricsToken) async throws -> Lyrics {
+    func fetch(with token: LyricsToken) async throws -> Lyrics {
 //        let parameter: [String: Any] = [
 //            "id": token.value.id,
 //            "lv": 1, "kv": 1, "tv": -1,

@@ -5,19 +5,19 @@ private let kugouSearchBaseURLString = "http://lyrics.kugou.com/search"
 private let kugouLyricsBaseURLString = "http://lyrics.kugou.com/download"
 
 extension LyricsProviders {
-    public final class Kugou {
-        public init() {}
+    final class Kugou {
+        init() {}
     }
 }
 
 extension LyricsProviders.Kugou: _LyricsProvider {
-    public struct LyricsToken {
+    struct LyricsToken {
         let value: KugouResponseSearchResult.Data.Info
     }
 
-    public static let service: String = "Kugou"
+    static let service: String = "Kugou"
 
-    public func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
+    func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
 //        let parameter: [String: Any] = [
 //            "keyword": request.searchTerm.description,
 //            "duration": Int(request.duration * 1000),
@@ -46,7 +46,7 @@ extension LyricsProviders.Kugou: _LyricsProvider {
         }
     }
 
-    public func fetch(with token: LyricsToken) async throws -> Lyrics {
+    func fetch(with token: LyricsToken) async throws -> Lyrics {
         let url = URL(string: "https://krcs.kugou.com/search?ver=1&man=yes&client=mobi&keyword=&duration=&hash=\(token.value.hash)&album_audio_id=\(token.value.albumAudioID)")!
 
         let (candidatesData, _) = try await URLSession.shared.data(for: .init(url: url))

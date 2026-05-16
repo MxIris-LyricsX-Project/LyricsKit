@@ -4,11 +4,11 @@ import FoundationToolbox
 
 public enum LyricsProviders {}
 
-public protocol LyricsProvider {
+public protocol LyricsProvider: Sendable {
     func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error>
 }
 
-public protocol _LyricsProvider: LyricsProvider {
+protocol _LyricsProvider: LyricsProvider {
     associatedtype LyricsToken
 
     static var service: String { get }
@@ -26,7 +26,7 @@ private enum LyricsProviderLog {
 }
 
 extension _LyricsProvider {
-    public func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
+    func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
         return AsyncThrowingStream { continuation in
             Task {
                 do {

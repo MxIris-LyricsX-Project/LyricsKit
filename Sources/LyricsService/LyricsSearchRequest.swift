@@ -1,12 +1,12 @@
 import Foundation
 
-public struct LyricsSearchRequest: Equatable {
+public struct LyricsSearchRequest: Equatable, Sendable {
     public var searchTerm: SearchTerm
     public var duration: TimeInterval
     public var limit: Int
     public var userInfo: [String: String]
 
-    public enum SearchTerm: Equatable {
+    public enum SearchTerm: Equatable, Sendable {
         case keyword(String)
         case info(title: String, artist: String)
     }

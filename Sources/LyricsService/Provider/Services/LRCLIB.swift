@@ -3,19 +3,19 @@ import LyricsCore
 import Regex
 
 extension LyricsProviders {
-    public final class LRCLIB {
-        public init() {}
+    final class LRCLIB {
+        init() {}
     }
 }
 
 extension LyricsProviders.LRCLIB: _LyricsProvider {
-    public struct LyricsToken {
+    struct LyricsToken {
         let value: LRCLIBResponse
     }
 
-    public static let service: String = "LRCLIB"
+    static let service: String = "LRCLIB"
 
-    public func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
+    func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         let urlString: String
         switch request.searchTerm {
         case .keyword(let string):
@@ -39,7 +39,7 @@ extension LyricsProviders.LRCLIB: _LyricsProvider {
         }
     }
 
-    public func fetch(with token: LyricsToken) async throws -> Lyrics {
+    func fetch(with token: LyricsToken) async throws -> Lyrics {
         if let lyrics = parseLyrics(for: token.value) {
             return lyrics
         }

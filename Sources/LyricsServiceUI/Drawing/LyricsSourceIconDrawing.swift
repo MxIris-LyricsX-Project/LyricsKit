@@ -35,7 +35,7 @@ typealias Color = UIColor
 
 #endif
 
-public class LyricsSourceIconDrawing {
+public enum LyricsSourceIconDrawing {
     //// Cache
 
     private enum Cache {
@@ -53,20 +53,20 @@ public class LyricsSourceIconDrawing {
 
     //// Colors
 
-    class var netEaseRed: Color { return Cache.netEaseRed }
-    class var white: Color { return Cache.white }
-    class var qqMusicYellow: Color { return Cache.qqMusicYellow }
-    class var qqMusicGreen: Color { return Cache.qqMusicGreen }
-    class var xiamiOrange: Color { return Cache.xiamiOrange }
-    class var kugouBlue: Color { return Cache.kugouBlue }
-    class var gecimiRed: Color { return Cache.gecimiRed }
-    class var gecimiGreen: Color { return Cache.gecimiGreen }
-    class var gecimiBlue: Color { return Cache.gecimiBlue }
-    class var gecimiYellow: Color { return Cache.gecimiYellow }
+    static var netEaseRed: Color { return Cache.netEaseRed }
+    static var white: Color { return Cache.white }
+    static var qqMusicYellow: Color { return Cache.qqMusicYellow }
+    static var qqMusicGreen: Color { return Cache.qqMusicGreen }
+    static var xiamiOrange: Color { return Cache.xiamiOrange }
+    static var kugouBlue: Color { return Cache.kugouBlue }
+    static var gecimiRed: Color { return Cache.gecimiRed }
+    static var gecimiGreen: Color { return Cache.gecimiGreen }
+    static var gecimiBlue: Color { return Cache.gecimiBlue }
+    static var gecimiYellow: Color { return Cache.gecimiYellow }
 
     //// Drawing Methods
 
-    class func drawNetEaseMusic(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
+    static func drawNetEaseMusic(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
         //// bg Drawing
         let bgPath = BezierPath()
         bgPath.move(to: CGPoint(x: frame.minX + 0.50000 * frame.width, y: frame.minY + 1.00000 * frame.height))
@@ -147,7 +147,7 @@ public class LyricsSourceIconDrawing {
         shapePath.fill()
     }
 
-    class func drawQQMusic(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
+    static func drawQQMusic(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
         //// bg Drawing
         let bgPath = BezierPath()
         bgPath.move(to: CGPoint(x: frame.minX + 0.50000 * frame.width, y: frame.minY + 1.00000 * frame.height))
@@ -199,7 +199,7 @@ public class LyricsSourceIconDrawing {
         notePath.fill()
     }
 
-    class func drawXiami(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
+    static func drawXiami(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
         //// bg Drawing
         let bgPath = BezierPath()
         bgPath.move(to: CGPoint(x: frame.minX + 0.00000 * frame.width, y: frame.minY + 0.20842 * frame.height))
@@ -289,7 +289,7 @@ public class LyricsSourceIconDrawing {
         xiaPath.fill()
     }
 
-    class func drawKugou(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
+    static func drawKugou(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
         //// bg Drawing
         let bgPath = BezierPath(ovalIn: CGRect(x: frame.minX + floor(frame.width * 0.00000 + 0.5), y: frame.minY + floor(frame.height * 0.00000 + 0.5), width: floor(frame.width * 1.00000 + 0.5) - floor(frame.width * 0.00000 + 0.5), height: floor(frame.height * 1.00000 + 0.5) - floor(frame.height * 0.00000 + 0.5)))
         LyricsSourceIconDrawing.kugouBlue.setFill()
@@ -323,7 +323,7 @@ public class LyricsSourceIconDrawing {
         kPath.fill()
     }
 
-    class func drawGecimi(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
+    static func drawGecimi(frame: CGRect = CGRect(x: 0, y: 0, width: 48, height: 48)) {
         //// bg Drawing
         let bgPath = BezierPath()
         bgPath.move(to: CGPoint(x: frame.minX + 0.00000 * frame.width, y: frame.minY + 0.20842 * frame.height))

@@ -9,19 +9,19 @@ private let qqLyricsBaseURLString2 = "https://c.y.qq.com/qqmusic/fcgi-bin/lyric_
 
 extension LyricsProviders {
     @Loggable
-    public final class QQMusic {
-        public init() {}
+    final class QQMusic {
+        init() {}
     }
 }
 
 extension LyricsProviders.QQMusic: _LyricsProvider {
-    public struct LyricsToken {
+    struct LyricsToken {
         let value: QQMusicSongSearchResult
     }
 
-    public static let service: String = "QQMusic"
+    static let service: String = "QQMusic"
 
-    public func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
+    func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         return try await withThrowingTaskGroup(of: [LyricsToken].self, returning: [LyricsToken].self) { group in
             group.addTask {
                 return try await self.searchApi1(for: request)
@@ -65,7 +65,7 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
                     "num_per_page": 20,
                     "page_num": 1,
                     "query": request.searchTerm.description,
-                    "search_type": 0,   // 0 = single track
+                    "search_type": 0, // 0 = single track
                 ],
             ],
         ]
@@ -89,7 +89,7 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
         }
     }
 
-    public func fetch(with token: LyricsToken) async throws -> Lyrics {
+    func fetch(with token: LyricsToken) async throws -> Lyrics {
         let token = token.value
         let parameter: [String: Any] = [
             "musicid": token.id,
