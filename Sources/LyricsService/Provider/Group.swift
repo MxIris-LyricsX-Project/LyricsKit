@@ -12,19 +12,25 @@ extension LyricsProviders {
         }
 
         public func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
-            return AsyncThrowingStream { continuation in
-                Task {
-                    for provider in providers {
-                        do {
-                            for try await lyric in provider.lyrics(for: request) {
-                                continuation.yield(lyric)
+            AsyncThrowingStream { continuation in
+                let providers = self.providers
+                let task = Task {
+                    await withTaskGroup(of: Void.self) { group in
+                        for provider in providers {
+                            group.addTask {
+                                do {
+                                    for try await lyric in provider.lyrics(for: request) {
+                                        continuation.yield(lyric)
+                                    }
+                                } catch {
+                                    #log(.error, "A provider in the group failed: \(error)")
+                                }
                             }
-                        } catch {
-                            #log(.error, "A provider in the group failed: \(error)")
                         }
                     }
                     continuation.finish()
                 }
+                continuation.onTermination = { _ in task.cancel() }
             }
         }
     }

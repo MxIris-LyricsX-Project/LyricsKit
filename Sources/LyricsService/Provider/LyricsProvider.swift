@@ -27,8 +27,8 @@ private enum LyricsProviderLog {
 
 extension _LyricsProvider {
     func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
-        return AsyncThrowingStream { continuation in
-            Task {
+        AsyncThrowingStream { continuation in
+            let task = Task {
                 do {
                     let tokens = try await self.search(for: request)
                     let limitedTokens = tokens.prefix(request.limit)
@@ -43,6 +43,10 @@ extension _LyricsProvider {
                     }
 
                     for task in fetchTasks {
+                        if Task.isCancelled {
+                            task.cancel()
+                            continue
+                        }
                         do {
                             let lyric = try await task.value
                             continuation.yield(lyric)
@@ -52,11 +56,11 @@ extension _LyricsProvider {
                     }
 
                     continuation.finish()
-
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 }
