@@ -1,0 +1,11 @@
+{
+  "candidates": [
+    {
+      "id": "111",
+      "accesskey": "AAAA",
+      "song": "Test Song",
+      "singer": "Test Artist",
+      "duration": 200000
+    }
+  ]
+}

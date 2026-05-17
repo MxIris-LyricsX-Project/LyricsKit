@@ -1,0 +1,28 @@
+{
+  "message": {
+    "header": {
+      "status_code": 200,
+      "hint": null
+    },
+    "body": {
+      "track_list": [
+        {
+          "track": {
+            "album_coverart_100x100": "https://example.com/cover100.jpg",
+            "album_coverart_350x350": "https://example.com/cover350.jpg",
+            "album_coverart_500x500": "https://example.com/cover500.jpg",
+            "album_coverart_800x800": "https://example.com/cover800.jpg",
+            "album_name": "Test Album",
+            "artist_name": "Test Artist",
+            "has_subtitles": 1,
+            "instrumental": 0,
+            "track_id": 123456,
+            "track_length": 200,
+            "track_name": "Test Song",
+            "track_spotify_id": "abcdef"
+          }
+        }
+      ]
+    }
+  }
+}

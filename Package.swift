@@ -60,6 +60,9 @@ let package = Package(
             dependencies: [
                 "LyricsCore",
                 "LyricsService",
+            ],
+            resources: [
+                .copy("Fixtures"),
             ]
         ),
     ],

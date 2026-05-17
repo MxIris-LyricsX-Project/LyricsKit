@@ -1,0 +1,20 @@
+{
+  "data": {
+    "info": [
+      {
+        "hash": "abcdef123456",
+        "album_id": "111",
+        "album_audio_id": 222,
+        "trans_param": {
+          "union_cover": "https://imge.kugou.com/stdmusic/{size}/abc.jpg"
+        }
+      },
+      {
+        "hash": "deadbeef",
+        "album_id": "333",
+        "album_audio_id": 444,
+        "trans_param": null
+      }
+    ]
+  }
+}

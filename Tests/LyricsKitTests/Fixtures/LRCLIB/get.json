@@ -1,0 +1,11 @@
+{
+  "id": 99999,
+  "name": "Fetched Song",
+  "trackName": "Fetched Song",
+  "artistName": "Fetched Artist",
+  "albumName": "Fetched Album",
+  "duration": 150.0,
+  "instrumental": false,
+  "plainLyrics": "plain",
+  "syncedLyrics": "[00:00.00]Hello\n[00:03.00]World"
+}

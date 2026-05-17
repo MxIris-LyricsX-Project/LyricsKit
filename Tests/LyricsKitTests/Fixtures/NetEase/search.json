@@ -1,0 +1,21 @@
+{
+  "code": 200,
+  "result": {
+    "songCount": 1,
+    "songs": [
+      {
+        "name": "Test Song",
+        "id": 111111,
+        "duration": 200000,
+        "artists": [
+          { "name": "Test Artist", "id": 1 }
+        ],
+        "album": {
+          "name": "Test Album",
+          "id": 9999,
+          "picUrl": "https://example.com/cover.jpg"
+        }
+      }
+    ]
+  }
+}

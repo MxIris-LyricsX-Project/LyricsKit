@@ -1,0 +1,47 @@
+{
+  "message": {
+    "header": {
+      "status_code": 200,
+      "hint": null
+    },
+    "body": {
+      "macro_calls": {
+        "matcher.track.get": {
+          "message": {
+            "header": { "status_code": 200 },
+            "body": {
+              "track": {
+                "album_coverart_100x100": "",
+                "album_coverart_350x350": "",
+                "album_coverart_500x500": "",
+                "album_coverart_800x800": "https://example.com/cover800.jpg",
+                "album_name": "Test Album",
+                "artist_name": "Test Artist",
+                "has_subtitles": 1,
+                "instrumental": 0,
+                "track_id": 123456,
+                "track_length": 200,
+                "track_name": "Test Song",
+                "track_spotify_id": "abcdef"
+              }
+            }
+          }
+        },
+        "track.subtitles.get": {
+          "message": {
+            "header": { "status_code": 200 },
+            "body": {
+              "subtitle_list": [
+                {
+                  "subtitle": {
+                    "subtitle_body": "[{\"text\":\"first line\",\"time\":{\"total\":0.0,\"minutes\":0,\"seconds\":0,\"hundredths\":0}},{\"text\":\"second line\",\"time\":{\"total\":3.5,\"minutes\":0,\"seconds\":3,\"hundredths\":50}}]"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
