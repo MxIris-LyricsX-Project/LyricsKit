@@ -30,22 +30,32 @@ extension LyricsProviders {
     public struct Service<Options: LyricsProviderOptions>: Sendable {
         public let id: ServiceID
         public var displayName: String { id.displayName }
-        private let factory: @Sendable (Options) -> LyricsProvider
+        private let factory: @Sendable (Options, HTTPClient) -> LyricsProvider
 
-        init(id: ServiceID, factory: @escaping @Sendable (Options) -> LyricsProvider) {
+        init(id: ServiceID, factory: @escaping @Sendable (Options, HTTPClient) -> LyricsProvider) {
             self.id = id
             self.factory = factory
         }
 
-        public func create(_ options: Options = .init()) -> LyricsProvider {
-            factory(options)
+        public func create(
+            _ options: Options = .init(),
+            httpClient: HTTPClient = URLSessionHTTPClient.shared
+        ) -> LyricsProvider {
+            factory(options, httpClient)
         }
     }
 }
 
 extension LyricsProviders.Service where Options == LyricsProviders.EmptyOptions {
-    public static let netease = Self(id: .netease, factory: { _ in LyricsProviders.NetEase() })
-    public static let qq      = Self(id: .qq,      factory: { _ in LyricsProviders.QQMusic() })
-    public static let kugou   = Self(id: .kugou,   factory: { _ in LyricsProviders.Kugou() })
-    public static let lrclib  = Self(id: .lrclib,  factory: { _ in LyricsProviders.LRCLIB() })
+    public static let netease = Self(id: .netease, factory: { _, http in LyricsProviders.NetEase(httpClient: http) })
+    public static let qq      = Self(id: .qq,      factory: { _, http in LyricsProviders.QQMusic(httpClient: http) })
+    public static let kugou   = Self(id: .kugou,   factory: { _, http in LyricsProviders.Kugou(httpClient: http) })
+    public static let lrclib  = Self(id: .lrclib,  factory: { _, http in LyricsProviders.LRCLIB(httpClient: http) })
+}
+
+extension LyricsProviders.Service where Options == LyricsProviders.MusixmatchOptions {
+    public static let musixmatch = Self(
+        id: .musixmatch,
+        factory: { options, http in LyricsProviders.Musixmatch(options: options, httpClient: http) }
+    )
 }
