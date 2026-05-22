@@ -48,3 +48,22 @@ extension Lyrics.Metadata {
         set { data[.searchIndex] = newValue }
     }
 }
+
+extension Lyrics {
+    /// Whether this result was found via a request a `LyricsSearchRequestPlugin`
+    /// derived from the caller's original search, rather than via the original
+    /// request itself — e.g. an Apple Music name-recovery re-search.
+    public var isFromSearchPlugin: Bool {
+        metadata.request?.origin == .plugin
+    }
+
+    /// The search term a `LyricsSearchRequestPlugin` used to find this result
+    /// — e.g. the recovered native-script name. `nil` for a result from the
+    /// caller's original search.
+    public var searchPluginTerm: LyricsSearchRequest.SearchTerm? {
+        guard isFromSearchPlugin else {
+            return nil
+        }
+        return metadata.request?.searchTerm
+    }
+}
