@@ -21,6 +21,24 @@ private let missingTagScore = 0.3
 // Floor for duration when the absolute delta is >= 10 seconds.
 private let minimalDurationQuality = 0.5
 
+// Subtracted when the candidate's title looks like an instrumental /
+// karaoke / off-vocal variant but the user wasn't asking for one. Sized
+// to outweigh the small similarity tie between "Song" and "Song (伴奏)"
+// without sinking the candidate so far that it disappears.
+private let alternateVersionPenalty = 0.3
+
+// Title fragments that mark an accompaniment / off-vocal variant users
+// almost never want lyrics for. Matched case-insensitively as substrings,
+// so "(Instrumental)", "Karaoke ver.", and "纯音乐版" all trigger.
+// Single-word abbreviations like "MR" are intentionally left out because
+// they collide with normal song titles ("Mr. Brightside").
+private let alternateVersionKeywords: [String] = [
+    "伴奏", "无人声", "纯音乐", "卡拉ok", "伴唱",
+    "instrumental", "inst.", "karaoke",
+    "off vocal", "off-vocal", "offvocal",
+    "acapella", "a capella",
+]
+
 extension Lyrics {
     public var quality: Double {
         if let cached = metadata.quality {
@@ -36,8 +54,33 @@ extension Lyrics {
         if metadata.attachmentTags.contains(.timetag) {
             quality += inlineTimeTagBonus
         }
+        if isUnwantedAlternateVersion {
+            quality -= alternateVersionPenalty
+        }
         metadata.quality = quality
         return quality
+    }
+
+    /// True when the lyrics' title carries an alternate-version marker
+    /// (instrumental, karaoke, off-vocal, …) that the search request did
+    /// not also ask for. Pushes accompaniment lyrics behind the real
+    /// vocal version when both come back for the same song.
+    private var isUnwantedAlternateVersion: Bool {
+        guard let title = idTags[.title] else { return false }
+        let titleLowered = title.lowercased()
+        guard alternateVersionKeywords.contains(where: { titleLowered.contains($0) }) else {
+            return false
+        }
+        let searchText: String
+        switch metadata.request?.searchTerm {
+        case .info(let searchTitle, _)?:
+            searchText = searchTitle.lowercased()
+        case .keyword(let keyword)?:
+            searchText = keyword.lowercased()
+        case nil:
+            return true
+        }
+        return !alternateVersionKeywords.contains(where: { searchText.contains($0) })
     }
 
     public func isMatched() -> Bool {

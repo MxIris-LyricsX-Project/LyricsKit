@@ -121,6 +121,53 @@ struct QualityTests {
         #expect(close.quality > far.quality)
     }
 
+    @Test func instrumentalVariantRanksBelowVocalForSameSong() {
+        // User's bug: searching "月亮爱过日落" returned the 伴奏 (accompaniment)
+        // version above the real vocal version on NetEase because their
+        // titles tied on similarity. The penalty should push the variant
+        // strictly below the vocal version.
+        let vocal = makeLyrics(title: "月亮爱过日落", artist: "yihuik 苡慧")
+        attach(vocal, searchTitle: "月亮爱过日落", searchArtist: "yihuik 苡慧")
+
+        let instrumental = makeLyrics(title: "月亮爱过日落 (伴奏)", artist: "yihuik 苡慧")
+        attach(instrumental, searchTitle: "月亮爱过日落", searchArtist: "yihuik 苡慧")
+
+        #expect(vocal.quality > instrumental.quality)
+    }
+
+    @Test func instrumentalKeywordsTriggerPenalty() {
+        // Spot-check a handful of marker words across languages and casings.
+        let markers = ["Instrumental", "(Karaoke)", "Off Vocal", "无人声 ver.", "纯音乐"]
+        for marker in markers {
+            let plain = makeLyrics(title: "Song", artist: "Artist")
+            attach(plain, searchTitle: "Song", searchArtist: "Artist")
+
+            let variant = makeLyrics(title: "Song \(marker)", artist: "Artist")
+            attach(variant, searchTitle: "Song", searchArtist: "Artist")
+
+            #expect(plain.quality > variant.quality,
+                    "marker \"\(marker)\" did not lower the score")
+        }
+    }
+
+    @Test func instrumentalNotPenalisedWhenUserSearchedForIt() {
+        // If the user explicitly typed "伴奏" / "instrumental" / ... into
+        // the title field, that is the version they want — don't penalise.
+        let variant = makeLyrics(title: "月亮爱过日落 (伴奏)", artist: "yihuik 苡慧")
+        attach(variant, searchTitle: "月亮爱过日落 伴奏", searchArtist: "yihuik 苡慧")
+
+        let bareInstrumental = makeLyrics(title: "Song Instrumental", artist: "Artist")
+        attach(bareInstrumental, searchTitle: "Song Instrumental", searchArtist: "Artist")
+
+        // The variant has the marker matched on both sides — no penalty —
+        // so its score should be on par with a normal exact title match.
+        let baseline = makeLyrics(title: "Song", artist: "Artist")
+        attach(baseline, searchTitle: "Song", searchArtist: "Artist")
+
+        #expect(bareInstrumental.quality >= baseline.quality - 0.05)
+        #expect(variant.quality > 0.7)
+    }
+
     @Test func qualityIsCachedAfterFirstAccess() {
         let lyrics = makeLyrics(title: "Over", artist: "yihuik 苡慧")
         attach(lyrics, searchTitle: "Over", searchArtist: "yihuik 苡慧")
