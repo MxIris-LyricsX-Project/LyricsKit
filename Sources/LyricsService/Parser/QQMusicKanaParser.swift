@@ -6,7 +6,7 @@ extension Lyrics.IDTagKey {
 }
 
 extension Lyrics {
-    func applyQQMusicKanaFurigana() {
+    public func applyQQMusicKanaFurigana() {
         guard let kana = idTags[.qqMusicKana] else { return }
 
         var parser = QQMusicKanaParser(kana)
