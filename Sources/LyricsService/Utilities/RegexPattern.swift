@@ -25,5 +25,7 @@ let netEaseInlineTagRegex = Regex(#"\(0,(\d+)\)([^(]+)(\(0,1\) )?"#)
 
 let kugouInlineTagRegex = Regex(#"<(\d+),(\d+),0>([^<]*)"#)
 
-let qqmusicInlineTagRegex = Regex(#"([^(]*)\((\d+),(\d+)\)"#)
+// Non-greedy fragment so literal parentheses in lyric text survive:
+// a QRC token like "3 ((150,50)" must yield fragment "3 (", not drop it.
+let qqmusicInlineTagRegex = Regex(#"(.*?)\((\d+),(\d+)\)"#)
 // swiftlint:enable force_try
