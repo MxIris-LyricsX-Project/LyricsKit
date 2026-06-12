@@ -132,6 +132,7 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
             ?? Lyrics(origContent) else {
             throw LyricsProviderError.processingFailed(reason: "Failed to parse or decrypt QQMusic QRC lyrics.")
         }
+        lrc.applyQQMusicKanaFurigana()
 
         if let transContent = decodedContents["ts"], let transLrc = Lyrics(transContent) {
             lrc.merge(translation: transLrc)
