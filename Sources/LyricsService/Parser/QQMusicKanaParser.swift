@@ -55,9 +55,11 @@ private struct QQMusicKanaParser {
                 break
             }
 
-            let lowerBound = content.distance(from: content.startIndex, to: range.lowerBound)
-            let upperBound = content.distance(from: content.startIndex, to: range.upperBound)
-            attributes.append(.init(range: lowerBound ..< upperBound, content: segment.reading))
+            if !segment.reading.isEmpty {
+                let lowerBound = content.distance(from: content.startIndex, to: range.lowerBound)
+                let upperBound = content.distance(from: content.startIndex, to: range.upperBound)
+                attributes.append(.init(range: lowerBound ..< upperBound, content: segment.reading))
+            }
             segmentIndex += 1
             scanIndex = nextIndex
         }
@@ -65,33 +67,40 @@ private struct QQMusicKanaParser {
         return attributes
     }
 
+    // Stream grammar (verified against live QQMusic data): a unit is a single
+    // count digit followed by an optional reading. An empty reading still
+    // consumes `count` base units without annotating them (unannotated digit
+    // runs like リッケン620, translated-title characters, etc.).
     private static func parseSegments(from kana: String) -> [Segment] {
         let normalized = kana.replacingOccurrences(
             of: #"\(\d+,\d+\)"#,
             with: "",
             options: .regularExpression
         )
-        guard let regex = try? NSRegularExpression(pattern: #"(\d+)([^\d]+)"#) else {
-            return []
-        }
-        let nsString = normalized as NSString
-        let matches = regex.matches(in: normalized, range: NSRange(location: 0, length: nsString.length))
-        return matches.compactMap { match in
-            guard match.numberOfRanges == 3,
-                  let count = Int(nsString.substring(with: match.range(at: 1))),
-                  count > 0 else {
-                return nil
+        var segments: [Segment] = []
+        var pendingCount: Int?
+        var reading = ""
+        for character in normalized {
+            if character.isASCII, let digit = character.wholeNumberValue {
+                if let count = pendingCount, count > 0 {
+                    segments.append(Segment(characterCount: count, reading: reading))
+                }
+                pendingCount = digit
+                reading = ""
+            } else {
+                reading.append(character)
             }
-            let reading = nsString.substring(with: match.range(at: 2))
-            guard !reading.isEmpty else { return nil }
-            return Segment(characterCount: count, reading: reading)
         }
+        if let count = pendingCount, count > 0 {
+            segments.append(Segment(characterCount: count, reading: reading))
+        }
+        return segments
     }
 
     private func nextKanaBaseIndex(in content: String, from index: String.Index) -> String.Index? {
         var current = index
         while current < content.endIndex {
-            if content[current].isQQMusicKanaBase {
+            if content[current].isQQMusicKanaBase || content[current].isQQMusicKanaDigit {
                 return current
             }
             current = content.index(after: current)
@@ -110,13 +119,26 @@ private struct QQMusicKanaParser {
         var remaining = count
 
         while current < content.endIndex, remaining > 0 {
-            let next = content.index(after: current)
-            if content[current].isQQMusicKanaBase {
+            if content[current].isQQMusicKanaDigit {
+                // QQMusic counts a contiguous digit run (e.g. １１５ or 366)
+                // as a single annotated unit with one reading.
+                var runEnd = content.index(after: current)
+                while runEnd < content.endIndex, content[runEnd].isQQMusicKanaDigit {
+                    runEnd = content.index(after: runEnd)
+                }
                 lowerBound = lowerBound ?? current
-                upperBound = next
+                upperBound = runEnd
                 remaining -= 1
+                current = runEnd
+            } else {
+                let next = content.index(after: current)
+                if content[current].isQQMusicKanaBase {
+                    lowerBound = lowerBound ?? current
+                    upperBound = next
+                    remaining -= 1
+                }
+                current = next
             }
-            current = next
         }
 
         guard remaining == 0, let lowerBound, let upperBound else {
@@ -135,6 +157,18 @@ private extension Character {
                 return true
             default:
                 return scalar == "々" || scalar == "〆" || scalar == "ヶ"
+            }
+        }
+    }
+
+    var isQQMusicKanaDigit: Bool {
+        unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x30 ... 0x39, // 0-9
+                 0xFF10 ... 0xFF19: // ０-９
+                return true
+            default:
+                return false
             }
         }
     }
