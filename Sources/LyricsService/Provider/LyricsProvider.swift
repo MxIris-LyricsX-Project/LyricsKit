@@ -8,6 +8,7 @@ public protocol LyricsProvider: Sendable {
     func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error>
 }
 
+@Loggable(asProtocolRequirement: false)
 protocol _LyricsProvider: LyricsProvider {
     associatedtype LyricsToken
 
@@ -16,13 +17,6 @@ protocol _LyricsProvider: LyricsProvider {
     func search(for request: LyricsSearchRequest) async throws -> [LyricsToken]
 
     func fetch(with token: LyricsToken) async throws -> Lyrics
-}
-
-@Loggable
-private enum LyricsProviderLog {
-    static func fetchTaskFailed(_ error: any Error) {
-        #log(.error, "A fetch task failed, skipping. Error: \(error)")
-    }
 }
 
 extension _LyricsProvider {
@@ -51,7 +45,7 @@ extension _LyricsProvider {
                             let lyric = try await task.value
                             continuation.yield(lyric)
                         } catch {
-                            LyricsProviderLog.fetchTaskFailed(error)
+                            #log(.error, "A fetch task failed, skipping. Error: \(error)")
                         }
                     }
 
