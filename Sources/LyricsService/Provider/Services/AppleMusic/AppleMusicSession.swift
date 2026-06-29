@@ -13,9 +13,11 @@ import os
 //
 //   1. an `Authorization: Bearer <developer-token>` — the JWT the Apple
 //      Music web player ships in its own JS bundle (issuer `AMPWebPlay`,
-//      ~35-day TTL, fetched on demand and cached for the process lifetime);
+//      ~35-day TTL, fetched on demand and cached for the process lifetime
+//      by `AppleMusicDeveloperTokenCache`);
 //   2. a `media-user-token: <user-token>` — pasted by the user once in
-//      preferences (this proves the active Apple Music subscription);
+//      preferences (this proves the active Apple Music subscription),
+//      passed in at construction time;
 //   3. `Origin: https://music.apple.com` + `Referer: …/` — the developer
 //      token's `root_https_origin` claim restricts which origins amp-api
 //      will accept it from.
@@ -23,31 +25,43 @@ import os
 // No `WKWebView`, no MusicKit JS runtime, no MusicKit App Service /
 // developer team registration.
 
-/// A persistent Apple Music amp-api session over `URLSession`.
+/// A per-provider Apple Music amp-api session over `URLSession`.
+///
+/// Configuration (`mediaUserToken` / `storefrontOverride` / `languageOverride`)
+/// is injected at construction time and is then immutable for the session's
+/// lifetime — there is no global `shared` instance anymore. The expensive,
+/// process-global piece (developer-token scrape + cache) is owned by
+/// `AppleMusicDeveloperTokenCache` so rebuilding the provider does not
+/// re-scrape the web player's JS bundle.
 @available(macOS 12.0, *)
-public actor AppleMusicSession {
+actor AppleMusicSession {
 
-    /// Shared session, used by the Apple Music providers.
-    public static let shared = AppleMusicSession()
+    // MARK: - Injected configuration
 
-    // MARK: - State
+    let mediaUserToken: String?
+    let storefrontOverride: String?
+    let languageOverride: String?
 
-    private var configuredUserToken: String?
-    private var cachedDeveloperToken: CachedDeveloperToken?
-    /// Last result of the lightweight authorization probe — cleared on
-    /// every token change so the next `isAuthorized()` re-tests against
-    /// amp-api.
+    // MARK: - Per-instance state
+
+    /// Last result of the lightweight authorization probe — recomputed on
+    /// demand the first time `isAuthorized()` is called.
     private var authorizedCache: Bool?
-
-    private var _storefrontOverride: String?
-    private var _languageOverride: String?
 
     private let urlSession: URLSession
 
-    public init() {
+    init(
+        mediaUserToken: String? = nil,
+        storefrontOverride: String? = nil,
+        languageOverride: String? = nil
+    ) {
+        self.mediaUserToken = mediaUserToken
+        self.storefrontOverride = storefrontOverride
+        self.languageOverride = languageOverride
+
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpAdditionalHeaders = [
-            "User-Agent": Self.userAgent,
+            "User-Agent": AppleMusicUserAgent.value,
             "Accept": "*/*",
             "Accept-Language": "en-US,en;q=0.9",
         ]
@@ -56,58 +70,17 @@ public actor AppleMusicSession {
         urlSession = URLSession(configuration: configuration)
     }
 
-    // MARK: - Overrides
-
-    /// Override the storefront auto-detection. When set, callers skip
-    /// `/v1/me/storefront` and use this value directly. 2-letter country
-    /// code, e.g. `"cn"`, `"us"`, `"jp"`.
-    public var storefrontOverride: String? {
-        get { _storefrontOverride }
-    }
-
-    public func setStorefrontOverride(_ value: String?) {
-        _storefrontOverride = value
-    }
-
-    /// Override the language used for TTML translations. When set, uses
-    /// this value instead of the system's preferred language. e.g.
-    /// `"zh-Hans"`, `"zh-hans-cn"`.
-    public var languageOverride: String? {
-        get { _languageOverride }
-    }
-
-    public func setLanguageOverride(_ value: String?) {
-        _languageOverride = value
-    }
-
-    // MARK: - Token configuration
-
-    /// Store the user's `media-user-token`. Invalidates the cached
-    /// authorization probe so the next `isAuthorized()` re-tests against
-    /// amp-api.
-    public func configure(mediaUserToken: String) async {
-        configuredUserToken = mediaUserToken
-        authorizedCache = nil
-    }
-
-    /// Clear the stored user token. Subsequent `musicAPI()` calls that hit
-    /// a user-context endpoint will 401.
-    public func clearToken() async {
-        configuredUserToken = nil
-        authorizedCache = nil
-    }
-
     // MARK: - Authorization probe
 
     /// Whether amp-api accepts the configured `media-user-token`.
     ///
-    /// Cached per-process. The probe hits `/v1/me/storefront` once, so
+    /// Cached per-instance. The probe hits `/v1/me/storefront` once, so
     /// later `musicAPI()` calls for user-context paths can short-circuit
     /// on failure (LyricsX uses this to decide whether to mount the
     /// Apple Music provider at all).
-    public func isAuthorized() async -> Bool {
+    func isAuthorized() async -> Bool {
         if let cached = authorizedCache { return cached }
-        guard configuredUserToken != nil else {
+        guard mediaUserToken != nil else {
             authorizedCache = false
             return false
         }
@@ -134,8 +107,8 @@ public actor AppleMusicSession {
     /// - Throws: `AppleMusicError.api` on transport failure or non-2xx
     ///   response (carries the API's error description when available),
     ///   `AppleMusicError.unexpectedResponse` on malformed URLs.
-    public func musicAPI(_ path: String) async throws -> Data {
-        let developerToken = try await ensureDeveloperToken()
+    func musicAPI(_ path: String) async throws -> Data {
+        let developerToken = try await AppleMusicDeveloperTokenCache.shared.ensureToken()
         guard let url = URL(string: "https://amp-api.music.apple.com" + path) else {
             throw AppleMusicError.unexpectedResponse
         }
@@ -143,7 +116,7 @@ public actor AppleMusicSession {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(developerToken)", forHTTPHeaderField: "Authorization")
-        if let userToken = configuredUserToken {
+        if let userToken = mediaUserToken {
             request.setValue(userToken, forHTTPHeaderField: "media-user-token")
         }
         // The developer token's `root_https_origin` claim restricts which
@@ -161,31 +134,62 @@ public actor AppleMusicSession {
         }
 
         // Non-2xx: 401/403 usually means the user token expired or the
-        // developer token rolled. Pop the developer-token cache so the
-        // next call refetches it.
+        // developer token rolled. Drop both caches so the next call
+        // refetches the developer token and re-probes authorization.
         if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-            cachedDeveloperToken = nil
+            await AppleMusicDeveloperTokenCache.shared.invalidate()
             authorizedCache = nil
         }
-        let description = Self.errorDescription(from: data, status: httpResponse.statusCode)
+        let description = AppleMusicAPIErrorParser.describe(data: data, status: httpResponse.statusCode)
         throw AppleMusicError.api(description)
     }
+}
 
-    // MARK: - Developer-token fetch
+// MARK: - Process-level developer-token cache
+
+/// Process-wide cache for the public Apple Music web-player developer token.
+///
+/// The token is not user-specific (it ships in the public JS bundle, see
+/// `fetchDeveloperToken()`) and has a ~35-day TTL, so a single cache shared
+/// by every `AppleMusicSession` instance avoids redundant scrapes whenever
+/// the provider is rebuilt (e.g. preferences change).
+@available(macOS 12.0, *)
+actor AppleMusicDeveloperTokenCache {
+
+    static let shared = AppleMusicDeveloperTokenCache()
+
+    private var cached: CachedDeveloperToken?
+    private let urlSession: URLSession
+
+    init() {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpAdditionalHeaders = [
+            "User-Agent": AppleMusicUserAgent.value,
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+        ]
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 30
+        urlSession = URLSession(configuration: configuration)
+    }
 
     /// Return a non-expired developer token, fetching one if needed.
-    private func ensureDeveloperToken() async throws -> String {
-        if let cached = cachedDeveloperToken,
-           cached.expiresAt > Date().addingTimeInterval(60 * 60) {
+    func ensureToken() async throws -> String {
+        if let cached, cached.expiresAt > Date().addingTimeInterval(60 * 60) {
             // Still has at least 1h to live — reuse.
             return cached.value
         }
         let fresh = try await fetchDeveloperToken()
-        cachedDeveloperToken = fresh
+        cached = fresh
         let daysLeft = Int(fresh.expiresAt.timeIntervalSinceNow / 86400)
         Logger.AppleMusic.debug(
             "fetched developer token, exp ~\(daysLeft, privacy: .public) days from now")
         return fresh.value
+    }
+
+    /// Drop the cached token, e.g. after amp-api returns 401/403.
+    func invalidate() {
+        cached = nil
     }
 
     /// Scrape the developer token from the public Apple Music web player.
@@ -198,7 +202,7 @@ public actor AppleMusicSession {
         guard let htmlString = String(data: html, encoding: .utf8) else {
             throw AppleMusicError.developerTokenUnavailable("landing page is not UTF-8")
         }
-        guard let bundlePath = Self.findJSBundlePath(in: htmlString) else {
+        guard let bundlePath = AppleMusicTokenScraper.findJSBundlePath(in: htmlString) else {
             throw AppleMusicError.developerTokenUnavailable(
                 "no /assets/index~*.js reference found in music.apple.com")
         }
@@ -207,11 +211,11 @@ public actor AppleMusicSession {
         guard let bundleString = String(data: bundle, encoding: .utf8) else {
             throw AppleMusicError.developerTokenUnavailable("JS bundle is not UTF-8")
         }
-        guard let raw = Self.findDeveloperToken(in: bundleString) else {
+        guard let raw = AppleMusicTokenScraper.findDeveloperToken(in: bundleString) else {
             throw AppleMusicError.developerTokenUnavailable(
                 "no JWT found in JS bundle \(bundlePath)")
         }
-        guard let (issuedAt, expiresAt) = Self.decodeJWTValidity(raw) else {
+        guard let (issuedAt, expiresAt) = AppleMusicTokenScraper.decodeJWTValidity(raw) else {
             throw AppleMusicError.developerTokenUnavailable("JWT payload is malformed")
         }
         return CachedDeveloperToken(value: raw, issuedAt: issuedAt, expiresAt: expiresAt)
@@ -222,7 +226,7 @@ public actor AppleMusicSession {
     /// directly rather than the API host.
     private func fetch(_ url: URL) async throws -> Data {
         var request = URLRequest(url: url)
-        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(AppleMusicUserAgent.value, forHTTPHeaderField: "User-Agent")
         let (data, response) = try await urlSession.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
               (200..<300).contains(httpResponse.statusCode)
@@ -232,14 +236,11 @@ public actor AppleMusicSession {
         }
         return data
     }
+}
 
-    // MARK: - Static parsing helpers
+// MARK: - Static parsing helpers
 
-    /// Apple's web player only serves to a Safari-on-macOS UA — this is
-    /// what music.apple.com renders for in a real session.
-    private static let userAgent =
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+private enum AppleMusicTokenScraper {
 
     /// Extract a path like `/assets/index~299c09aac6.js` from the landing
     /// page HTML. The hash in the filename rolls with every web-player
@@ -309,10 +310,12 @@ public actor AppleMusicSession {
         }
         return Data(base64Encoded: normalized)
     }
+}
 
+private enum AppleMusicAPIErrorParser {
     /// Pull a human-readable error string out of amp-api's `{errors:[…]}`
     /// envelope, falling back to the status code when the body is empty.
-    private static func errorDescription(from data: Data, status: Int) -> String {
+    static func describe(data: Data, status: Int) -> String {
         if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let errors = dict["errors"] as? [[String: Any]],
            let first = errors.first {
@@ -322,6 +325,14 @@ public actor AppleMusicSession {
         }
         return "HTTP \(status)"
     }
+}
+
+private enum AppleMusicUserAgent {
+    /// Apple's web player only serves to a Safari-on-macOS UA — this is
+    /// what music.apple.com renders for in a real session.
+    static let value =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        + "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 }
 
 // MARK: - Cached developer token

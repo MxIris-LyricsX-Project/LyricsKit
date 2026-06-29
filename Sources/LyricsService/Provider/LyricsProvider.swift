@@ -6,10 +6,17 @@ public enum LyricsProviders {}
 
 public protocol LyricsProvider: Sendable {
     func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error>
+
+    /// Whether this provider can currently be used.
+    ///
+    /// Providers that require credentials (e.g. Apple Music's `media-user-token`)
+    /// implement this with a real probe and return `false` when the credential
+    /// is missing or rejected. Providers with no auth requirement return `true`.
+    var isAuthorized: Bool { get async }
 }
 
 @Loggable(asProtocolRequirement: false)
-public protocol _LyricsProvider: LyricsProvider {
+protocol _LyricsProvider: LyricsProvider {
     associatedtype LyricsToken
 
     static var service: String { get }
@@ -20,7 +27,7 @@ public protocol _LyricsProvider: LyricsProvider {
 }
 
 extension _LyricsProvider {
-    public func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
+    func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {

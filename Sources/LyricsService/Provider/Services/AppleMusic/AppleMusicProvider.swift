@@ -1,7 +1,6 @@
 import Foundation
 import os
 import LyricsCore
-import LyricsService
 
 // MARK: - Apple Music Lyrics Provider
 
@@ -17,11 +16,52 @@ import LyricsService
 /// `AppleMusicCatalog` is reserved for the no-token Route B (name recovery).
 @available(macOS 12.0, *)
 extension LyricsProviders {
-    public final class AppleMusic {
-        let httpClient: HTTPClient
 
-        public init(httpClient: HTTPClient = URLSessionHTTPClient.shared) {
+    /// Options injected at construction time, the same shape as
+    /// `MusixmatchOptions` — every Apple Music credential the provider
+    /// needs is passed in here. No global session, no `UserDefaults`
+    /// reach-through inside the provider.
+    public struct AppleMusicOptions: LyricsProviderOptions {
+        /// The `media-user-token` the amp-api requires (pasted by the
+        /// user once in preferences). When `nil` the provider reports
+        /// itself as unauthorized.
+        public var mediaUserToken: String?
+        /// Pinned storefront, e.g. `"cn"`, `"us"`, `"jp"`. When `nil` the
+        /// provider falls back to `/v1/me/storefront`.
+        public var storefrontOverride: String?
+        /// Pinned TTML language tag, e.g. `"zh-Hans"`, `"zh-hans-cn"`.
+        /// When `nil` the provider uses `Locale.preferredLanguages`.
+        public var languageOverride: String?
+
+        public init() {}
+
+        public init(
+            mediaUserToken: String? = nil,
+            storefrontOverride: String? = nil,
+            languageOverride: String? = nil
+        ) {
+            self.mediaUserToken = mediaUserToken
+            self.storefrontOverride = storefrontOverride
+            self.languageOverride = languageOverride
+        }
+    }
+
+    final class AppleMusic {
+        let httpClient: HTTPClient
+        let options: AppleMusicOptions
+        let session: AppleMusicSession
+
+        init(
+            options: AppleMusicOptions = .init(),
+            httpClient: HTTPClient = URLSessionHTTPClient.shared
+        ) {
             self.httpClient = httpClient
+            self.options = options
+            self.session = AppleMusicSession(
+                mediaUserToken: options.mediaUserToken,
+                storefrontOverride: options.storefrontOverride,
+                languageOverride: options.languageOverride
+            )
         }
     }
 }
@@ -30,14 +70,15 @@ extension LyricsProviders {
 
 @available(macOS 12.0, *)
 extension LyricsProviders.AppleMusic: _LyricsProvider {
-
-    public struct LyricsToken: Sendable {
-        public let song: AppleMusicCatalogSong
+    struct LyricsToken: Sendable {
+        let song: AppleMusicCatalogSong
     }
 
-    public static let service: String = "Apple Music"
+    static let service: String = "Apple Music"
 
-    public func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
+    var isAuthorized: Bool { get async { await session.isAuthorized() } }
+
+    func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         let storefront = try await resolveStorefront()
 
         let searchTerm: String
@@ -69,7 +110,7 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
         return filtered.map { LyricsToken(song: $0) }
     }
 
-    public func fetch(with token: LyricsToken) async throws -> Lyrics {
+    func fetch(with token: LyricsToken) async throws -> Lyrics {
         let storefront = try await resolveStorefront()
         let songID = token.song.id
 
@@ -81,10 +122,11 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
 
         let data: Data
         do {
-            data = try await AppleMusicSession.shared.musicAPI(path)
+            data = try await session.musicAPI(path)
         } catch {
             throw LyricsProviderError.processingFailed(
-                reason: "Apple Music amp-api request failed: \(error.localizedDescription)")
+                reason: "Apple Music amp-api request failed: \(error.localizedDescription)",
+            )
         }
 
         let response: TTMLLyricsResponse
@@ -93,17 +135,20 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
             response = wrapper.unwrapped
         } catch {
             throw LyricsProviderError.processingFailed(
-                reason: "Failed to decode TTML response: \(error.localizedDescription)")
+                reason: "Failed to decode TTML response: \(error.localizedDescription)",
+            )
         }
 
         guard let ttml = response.data.first?.attributes.ttmlLocalizations, !ttml.isEmpty else {
             throw LyricsProviderError.processingFailed(
-                reason: "No syllable lyrics available for this track.")
+                reason: "No syllable lyrics available for this track.",
+            )
         }
 
         guard let lyrics = Lyrics(ttmlContent: ttml) else {
             throw LyricsProviderError.processingFailed(
-                reason: "Failed to parse TTML lyrics for track \(songID)")
+                reason: "Failed to parse TTML lyrics for track \(songID)",
+            )
         }
 
         // Reject if no line has any timing data — the TTML envelope existed
@@ -113,7 +158,8 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
         }
         guard hasLinesWithTime else {
             throw LyricsProviderError.processingFailed(
-                reason: "No syllable lyrics available for this track.")
+                reason: "No syllable lyrics available for this track.",
+            )
         }
 
         lyrics.applyMetadata(
@@ -121,7 +167,8 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
             artist: token.song.artistName,
             album: token.song.albumName,
             length: token.song.durationInMillis.map { Double($0) / 1000.0 },
-            serviceToken: token.song.id)
+            serviceToken: token.song.id,
+        )
 
         return lyrics
     }
@@ -130,11 +177,10 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
 
     /// Resolve the storefront via override or `/v1/me/storefront`.
     private func resolveStorefront() async throws -> String {
-        if let override = await AppleMusicSession.shared.storefrontOverride,
-           !override.isEmpty {
+        if let override = options.storefrontOverride, !override.isEmpty {
             return override
         }
-        let data = try await AppleMusicSession.shared.musicAPI("/v1/me/storefront")
+        let data = try await session.musicAPI("/v1/me/storefront")
         let wrapper = try JSONDecoder().decode(MusicKitWrapper<StorefrontResponse>.self, from: data)
         guard let id = wrapper.unwrapped.data.first?.id else {
             throw AppleMusicError.unexpectedResponse
@@ -144,8 +190,7 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
 
     /// Override or `Locale.preferredLanguages` first entry, capped to 5 chars.
     private func resolveLanguage() async -> String {
-        if let override = await AppleMusicSession.shared.languageOverride,
-           !override.isEmpty {
+        if let override = options.languageOverride, !override.isEmpty {
             return override
         }
         return Locale.preferredLanguages.first.flatMap { String($0.prefix(5)) }
@@ -156,16 +201,16 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
     /// the term so characters like `&`, `+`, `#` cannot break the path the
     /// web player passes to `music.api.music()`.
     private func catalogSearch(term: String, storefront: String)
-        async throws -> [AppleMusicCatalogSong]
-    {
+        async throws -> [AppleMusicCatalogSong] {
         let encoded = term.addingPercentEncoding(
             withAllowedCharacters: {
                 var characters = CharacterSet.urlQueryAllowed
                 characters.remove(charactersIn: "&$+,\n#")
                 return characters
-            }()) ?? term
+            }(),
+        ) ?? term
         let path = "/v1/catalog/\(storefront)/search?term=\(encoded)&types=songs&limit=10"
-        let data = try await AppleMusicSession.shared.musicAPI(path)
+        let data = try await session.musicAPI(path)
         let wrapper = try JSONDecoder().decode(MusicKitWrapper<SearchResponse>.self, from: data)
         return (wrapper.unwrapped.results.songs?.data ?? []).map(\.flattened)
     }
@@ -174,8 +219,7 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
     /// `contains` in both directions tolerates "artist A, artist B" and
     /// "artist A (feat. X)" variations.
     private func applyArtistFilter(songs: [AppleMusicCatalogSong], artist: String?)
-        -> [AppleMusicCatalogSong]
-    {
+        -> [AppleMusicCatalogSong] {
         guard let artist else { return songs }
         return songs.filter {
             let candidate = $0.artistName.lowercased()
@@ -245,7 +289,8 @@ private struct CatalogSongResource: Decodable {
             artistName: attributes.artistName,
             albumName: attributes.albumName,
             isrc: attributes.isrc,
-            durationInMillis: attributes.durationInMillis)
+            durationInMillis: attributes.durationInMillis,
+        )
     }
 }
 
@@ -259,14 +304,4 @@ private struct TTMLLyricsResponse: Decodable {
             let ttmlLocalizations: String
         }
     }
-}
-
-// MARK: - Service Registration
-
-@available(macOS 12.0, *)
-extension LyricsProviders.Service where Options == LyricsProviders.EmptyOptions {
-    public static let appleMusic = Self(
-        id: .appleMusic,
-        factory: { _, http in LyricsProviders.AppleMusic(httpClient: http) }
-    )
 }

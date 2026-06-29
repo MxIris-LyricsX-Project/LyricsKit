@@ -19,6 +19,8 @@ extension LyricsProviders.Kugou: _LyricsProvider {
 
     static let service: String = "Kugou"
 
+    var isAuthorized: Bool { get async { true } }
+
     func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         let endpoint = Endpoint(
             scheme: "http",

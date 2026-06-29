@@ -28,6 +28,8 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
 
     static let service: String = "QQMusic"
 
+    var isAuthorized: Bool { get async { true } }
+
     func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         let combined = await withTaskGroup(of: [LyricsToken].self) { group in
             group.addTask { await self.searchApi1(for: request) }

@@ -26,6 +26,8 @@ extension LyricsProviders.NetEase: _LyricsProvider {
 
     static let service: String = "NetEase"
 
+    var isAuthorized: Bool { get async { true } }
+
     func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         let endpoint = Endpoint(
             scheme: "http",

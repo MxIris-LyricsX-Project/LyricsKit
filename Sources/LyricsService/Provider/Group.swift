@@ -19,6 +19,19 @@ extension LyricsProviders {
             self.plugins = plugins
         }
 
+        /// Aggregates the underlying providers: the group is considered
+        /// authorized as long as at least one provider in it is authorized.
+        public var isAuthorized: Bool {
+            get async {
+                for provider in providers {
+                    if await provider.isAuthorized {
+                        return true
+                    }
+                }
+                return false
+            }
+        }
+
         public func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
             AsyncThrowingStream { continuation in
                 let task = Task {

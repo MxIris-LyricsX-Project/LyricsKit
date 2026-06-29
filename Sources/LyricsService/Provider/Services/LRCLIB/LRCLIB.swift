@@ -19,6 +19,8 @@ extension LyricsProviders.LRCLIB: _LyricsProvider {
 
     static let service: String = "LRCLIB"
 
+    var isAuthorized: Bool { get async { true } }
+
     func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         let queryItems: [URLQueryItem]
         switch request.searchTerm {

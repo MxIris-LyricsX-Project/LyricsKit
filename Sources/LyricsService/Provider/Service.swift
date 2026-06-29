@@ -63,3 +63,11 @@ extension LyricsProviders.Service where Options == LyricsProviders.MusixmatchOpt
         factory: { options, http in LyricsProviders.Musixmatch(options: options, httpClient: http) }
     )
 }
+
+@available(macOS 12.0, *)
+extension LyricsProviders.Service where Options == LyricsProviders.AppleMusicOptions {
+    public static let appleMusic = Self(
+        id: .appleMusic,
+        factory: { options, http in LyricsProviders.AppleMusic(options: options, httpClient: http) }
+    )
+}

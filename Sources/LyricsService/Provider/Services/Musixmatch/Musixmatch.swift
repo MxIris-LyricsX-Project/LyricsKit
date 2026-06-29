@@ -54,6 +54,12 @@ extension LyricsProviders.Musixmatch: _LyricsProvider {
 
     static let service: String = "Musixmatch"
 
+    // Musixmatch's user token is an optional enhancement; the public search
+    // endpoint accepts requests with no token (results just lose richer
+    // metadata). Treat the provider as always available — token validity is
+    // surfaced as a per-request error at fetch time.
+    var isAuthorized: Bool { get async { true } }
+
     func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
         let termItems: [URLQueryItem]
         switch request.searchTerm {
