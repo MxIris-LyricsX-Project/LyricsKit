@@ -15,6 +15,7 @@ extension LyricsProviders {
         case kugou
         case musixmatch
         case lrclib
+        case appleMusic
 
         public var displayName: String {
             switch self {
@@ -23,6 +24,7 @@ extension LyricsProviders {
             case .kugou: return "Kugou"
             case .musixmatch: return "Musixmatch"
             case .lrclib: return "LRCLIB"
+            case .appleMusic: return "Apple Music"
             }
         }
     }
@@ -32,7 +34,9 @@ extension LyricsProviders {
         public var displayName: String { id.displayName }
         private let factory: @Sendable (Options, HTTPClient) -> LyricsProvider
 
-        init(id: ServiceID, factory: @escaping @Sendable (Options, HTTPClient) -> LyricsProvider) {
+        // `public` so add-on targets (e.g. LyricsServiceAppleMusic) can register
+        // their own services without having to live inside LyricsService.
+        public init(id: ServiceID, factory: @escaping @Sendable (Options, HTTPClient) -> LyricsProvider) {
             self.id = id
             self.factory = factory
         }

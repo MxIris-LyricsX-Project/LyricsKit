@@ -9,7 +9,7 @@ public protocol LyricsProvider: Sendable {
 }
 
 @Loggable(asProtocolRequirement: false)
-protocol _LyricsProvider: LyricsProvider {
+public protocol _LyricsProvider: LyricsProvider {
     associatedtype LyricsToken
 
     static var service: String { get }
@@ -20,7 +20,7 @@ protocol _LyricsProvider: LyricsProvider {
 }
 
 extension _LyricsProvider {
-    func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
+    public func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
