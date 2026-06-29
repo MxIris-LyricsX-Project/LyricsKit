@@ -2,7 +2,7 @@ import Foundation
 import LyricsCore
 
 extension Lyrics {
-    func applyMetadata(
+    public func applyMetadata(
         title: String? = nil,
         artist: String? = nil,
         album: String? = nil,
