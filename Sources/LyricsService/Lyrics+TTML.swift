@@ -6,9 +6,10 @@ import LyricsCore
 extension Lyrics {
     /// Initialize from Apple Music TTML (Timed Text Markup Language) format.
     ///
-    /// Parses `<p>` as `LyricsLine`, `<span>` as `InlineTimeTag` (word-level
-    /// karaoke), and `<iTunesMetadata>/<translations>` as per-line translation
-    /// attachments (`tr:{lang}`).
+    /// Parses `<p>` as `LyricsLine`, preserves `<span>` word endings and nested
+    /// syllables as `SynchronizedTextTiming`, maintains `InlineTimeTag` as the
+    /// compatibility representation, and imports `<iTunesMetadata>/<translations>`
+    /// as per-line translation attachments (`tr:{lang}`).
     ///
     /// Time formats: `SS.mmm`, `M:SS.mmm`, `MM:SS.mmm`
     public convenience init?(ttmlContent xmlString: String) {
@@ -58,6 +59,16 @@ private final class TTMLParser: NSObject, XMLParserDelegate {
     private var lineItunesKey: String?
     private var lineText = ""
     private var timetagTags: [LyricsLine.Attachments.InlineTimeTag.Tag] = []
+    private var synchronizedWords: [LyricsLine.Attachments.SynchronizedTextTiming.Word] = []
+    private var openSpans: [OpenSpan] = []
+    private var isInsideLine = false
+
+    private struct OpenSpan {
+        let startingCharacterIndex: Int
+        let startingTime: TimeInterval?
+        let endingTime: TimeInterval?
+        var nestedSyllables: [LyricsLine.Attachments.SynchronizedTextTiming.Syllable] = []
+    }
 
     // --- Translation state (lang → key → text) ---
     var translations: [String: [String: String]] = [:]
@@ -115,7 +126,7 @@ private final class TTMLParser: NSObject, XMLParserDelegate {
         // lineText (reused as a scratch buffer).
         if depthInMeta > 0 {
             lineText += string
-        } else {
+        } else if isInsideLine {
             // Body: text inside <p> (and between <span>s).
             lineText += string
         }
@@ -133,6 +144,8 @@ private final class TTMLParser: NSObject, XMLParserDelegate {
         }
 
         switch elementName {
+        case "span":
+            endSpan()
         case "p":
             endLine()
         default:
@@ -197,9 +210,16 @@ private final class TTMLParser: NSObject, XMLParserDelegate {
         lineItunesKey = attributes["itunes:key"] ?? attributes["key"]
         lineText = ""
         timetagTags = []
+        synchronizedWords = []
+        openSpans = []
+        isInsideLine = true
     }
 
     private func endLine() {
+        defer {
+            openSpans = []
+            isInsideLine = false
+        }
         let trimmed = lineText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
@@ -228,6 +248,46 @@ private final class TTMLParser: NSObject, XMLParserDelegate {
             )
         }
 
+        let adjustedSynchronizedWords = synchronizedWords.compactMap { word -> LyricsLine.Attachments.SynchronizedTextTiming.Word? in
+            guard let adjustedWordRange = adjustedCharacterRange(
+                word.characterRange,
+                leadingOffset: leadingOffset,
+                characterCount: trimmed.count
+            ) else {
+                return nil
+            }
+            let adjustedSyllables = word.syllables.compactMap { syllable -> LyricsLine.Attachments.SynchronizedTextTiming.Syllable? in
+                guard let adjustedSyllableRange = adjustedCharacterRange(
+                    syllable.characterRange,
+                    leadingOffset: leadingOffset,
+                    characterCount: trimmed.count
+                ),
+                    adjustedWordRange.contains(adjustedSyllableRange.lowerBound),
+                    adjustedSyllableRange.upperBound <= adjustedWordRange.upperBound
+                else {
+                    return nil
+                }
+                return LyricsLine.Attachments.SynchronizedTextTiming.Syllable(
+                    characterRange: adjustedSyllableRange,
+                    timeRange: syllable.timeRange
+                )
+            }
+            return LyricsLine.Attachments.SynchronizedTextTiming.Word(
+                characterRange: adjustedWordRange,
+                timeRange: word.timeRange,
+                syllables: adjustedSyllables
+            )
+        }
+        if !adjustedSynchronizedWords.isEmpty {
+            let synchronizedTextTiming = LyricsLine.Attachments.SynchronizedTextTiming(
+                words: adjustedSynchronizedWords,
+                duration: duration
+            )
+            if synchronizedTextTiming.isValid(forCharacterCount: trimmed.count) {
+                attachDict[.synchronizedTextTiming] = synchronizedTextTiming
+            }
+        }
+
         // Attach translations keyed by itunes:key="L{N}"
         if let key = lineItunesKey {
             for (lang, langTrans) in translations {
@@ -246,9 +306,66 @@ private final class TTMLParser: NSObject, XMLParserDelegate {
     // MARK: - <span>
 
     private func beginSpan(attributes: [String: String]) {
-        let begin = TTMLParser.parseTime(attributes["begin"])
-        let offset = max(0, begin - lineBegin)
-        timetagTags.append(.init(index: lineText.count, time: offset))
+        guard isInsideLine else { return }
+        openSpans.append(OpenSpan(
+            startingCharacterIndex: lineText.count,
+            startingTime: TTMLParser.parseOptionalTime(attributes["begin"]).map { max(0, $0 - lineBegin) },
+            endingTime: TTMLParser.parseOptionalTime(attributes["end"]).map { max(0, $0 - lineBegin) }
+        ))
+    }
+
+    private func endSpan() {
+        guard isInsideLine, let completedSpan = openSpans.popLast() else { return }
+        let characterRange = completedSpan.startingCharacterIndex ..< lineText.count
+        guard !characterRange.isEmpty else { return }
+
+        let startingTime = completedSpan.startingTime ?? completedSpan.nestedSyllables.first?.timeRange.lowerBound
+        let endingTime = completedSpan.endingTime ?? completedSpan.nestedSyllables.last?.timeRange.upperBound
+        let completedTimeRange = startingTime.flatMap { resolvedStartingTime in
+            endingTime.map { resolvedEndingTime in
+                resolvedStartingTime ..< max(resolvedStartingTime, resolvedEndingTime)
+            }
+        }
+
+        if var parentSpan = openSpans.popLast() {
+            if completedSpan.nestedSyllables.isEmpty, let completedTimeRange {
+                parentSpan.nestedSyllables.append(.init(
+                    characterRange: characterRange,
+                    timeRange: completedTimeRange
+                ))
+            } else {
+                parentSpan.nestedSyllables.append(contentsOf: completedSpan.nestedSyllables)
+            }
+            openSpans.append(parentSpan)
+            return
+        }
+
+        if let startingTime {
+            timetagTags.append(.init(index: characterRange.lowerBound, time: startingTime))
+        }
+        guard let completedTimeRange else { return }
+        let syllables = completedSpan.nestedSyllables.isEmpty
+            ? [LyricsLine.Attachments.SynchronizedTextTiming.Syllable(
+                characterRange: characterRange,
+                timeRange: completedTimeRange
+            )]
+            : completedSpan.nestedSyllables
+        synchronizedWords.append(.init(
+            characterRange: characterRange,
+            timeRange: completedTimeRange,
+            syllables: syllables
+        ))
+    }
+
+    private func adjustedCharacterRange(
+        _ characterRange: Range<Int>,
+        leadingOffset: Int,
+        characterCount: Int
+    ) -> Range<Int>? {
+        let lowerBound = min(characterCount, max(0, characterRange.lowerBound - leadingOffset))
+        let upperBound = min(characterCount, max(lowerBound, characterRange.upperBound - leadingOffset))
+        guard lowerBound < upperBound else { return nil }
+        return lowerBound ..< upperBound
     }
 }
 
@@ -261,17 +378,28 @@ extension TTMLParser {
     /// - `SS.mmm` → seconds only
     /// - `M:SS.mmm` / `MM:SS.mmm` → minutes + seconds
     static func parseTime(_ string: String?) -> TimeInterval {
-        guard let string, !string.isEmpty else { return 0 }
+        parseOptionalTime(string) ?? 0
+    }
+
+    static func parseOptionalTime(_ string: String?) -> TimeInterval? {
+        guard let string, !string.isEmpty else { return nil }
         let parts = string.split(separator: ":")
         switch parts.count {
         case 1:
-            return TimeInterval(string) ?? 0
+            guard let time = TimeInterval(string), time.isFinite else { return nil }
+            return time
         case 2:
-            let minutes = TimeInterval(parts[0]) ?? 0
-            let seconds = TimeInterval(parts[1]) ?? 0
-            return minutes * 60 + seconds
+            guard let minutes = TimeInterval(parts[0]),
+                  let seconds = TimeInterval(parts[1]),
+                  minutes.isFinite,
+                  seconds.isFinite
+            else {
+                return nil
+            }
+            let time = minutes * 60 + seconds
+            return time.isFinite ? time : nil
         default:
-            return 0
+            return nil
         }
     }
 }

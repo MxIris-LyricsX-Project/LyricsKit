@@ -50,7 +50,6 @@ public final class Lyrics: LosslessStringConvertible {
         }
         self.init(lines: lines, idTags: idTags)
 
-        var tags: Set<LyricsLine.Attachments.Tag> = []
         lyricsLineAttachmentRegex.matches(in: description).forEach { match in
             let timeTagStr = match[1]!.string
             let timeTags = resolveTimeTag(timeTagStr)
@@ -61,11 +60,14 @@ public final class Lyrics: LosslessStringConvertible {
             for timeTag in timeTags {
                 if case .found(at: let index) = lineIndex(of: timeTag) {
                     self.lines[index].attachments[.init(attachmentTagStr)] = attachmentStr
+                    if let timing = self.lines[index].attachments.synchronizedTextTiming,
+                       !timing.isValid(forCharacterCount: self.lines[index].content.count) {
+                        self.lines[index].attachments.synchronizedTextTiming = nil
+                    }
                 }
             }
-            tags.insert(.init(attachmentTagStr))
         }
-        metadata.data[.attachmentTags] = tags
+        metadata.data[.attachmentTags] = Set(self.lines.flatMap(\.attachments.content.keys))
     }
 
     public var description: String {

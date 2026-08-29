@@ -23,6 +23,15 @@ extension LyricsLine {
 }
 
 extension LyricsLine.Attachments {
+    public var synchronizedTextTiming: SynchronizedTextTiming? {
+        get {
+            return content[.synchronizedTextTiming] as? SynchronizedTextTiming
+        }
+        set {
+            content[.synchronizedTextTiming] = newValue
+        }
+    }
+
     public var timetag: InlineTimeTag? {
         get {
             return content[.timetag] as? InlineTimeTag
@@ -63,6 +72,8 @@ extension LyricsLine.Attachments {
 
     static func createAttachment(str: String, tag: Tag) -> LyricsLineAttachment? {
         switch tag {
+        case .synchronizedTextTiming:
+            return SynchronizedTextTiming(str)
         case .timetag:
             return InlineTimeTag(str)
         case .furigana,
@@ -103,6 +114,7 @@ extension LyricsLine.Attachments.Tag {
         self.rawValue = rawValue
     }
 
+    public static let synchronizedTextTiming: LyricsLine.Attachments.Tag = "synchronized-timing"
     public static let timetag: LyricsLine.Attachments.Tag = "tt"
     public static let furigana: LyricsLine.Attachments.Tag = "fu"
     public static let romaji: LyricsLine.Attachments.Tag = "ro"
