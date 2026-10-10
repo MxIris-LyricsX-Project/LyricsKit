@@ -83,6 +83,34 @@ extension Lyrics {
         return !alternateVersionKeywords.contains(where: { searchText.contains($0) })
     }
 
+    /// Public search is a fallback from an authoritative client record. A
+    /// provider's priority must never make an unrelated song eligible.
+    public func isReliableClientFallbackMatch(for request: LyricsSearchRequest? = nil) -> Bool {
+        guard let request = request ?? metadata.request,
+              case .info(let searchTitle, let searchArtist) = request.searchTerm,
+              let title = idTags[.title], let artist = idTags[.artist] else { return false }
+        func normalized(_ text: String) -> String {
+            text.lowercased().filter { !$0.isWhitespace }
+        }
+        func baseTitle(_ text: String) -> String {
+            // Compare the complete song name; tolerate a trailing edition tag,
+            // never an arbitrary substring ("爱" must not match "爱如火").
+            normalized(text.replacingOccurrences(of: #"\s*[\(（\[【][^\)）\]】]*[\)）\]】]\s*$"#,
+                                                with: "", options: .regularExpression))
+        }
+        let expectedTitle = baseTitle(searchTitle)
+        guard !expectedTitle.isEmpty, baseTitle(title) == expectedTitle else { return false }
+        func artists(_ text: String) -> Set<String> {
+            Set(text.components(separatedBy: CharacterSet(charactersIn: "/&,、;；"))
+                .map(normalized).filter { !$0.isEmpty })
+        }
+        let expectedArtists = artists(searchArtist)
+        guard !expectedArtists.isEmpty, !artists(artist).isDisjoint(with: expectedArtists) else { return false }
+        if let length, length.isFinite, length > 0, request.duration.isFinite, request.duration > 0,
+           abs(length - request.duration) > 10 { return false }
+        return true
+    }
+
     public func isMatched() -> Bool {
         guard let artist = idTags[.artist],
               let title = idTags[.title] else {

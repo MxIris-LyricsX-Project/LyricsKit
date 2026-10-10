@@ -4,6 +4,7 @@ import Foundation
 @testable import LyricsService
 
 private struct StaticProvider: LyricsProvider {
+    var isAuthorized: Bool { get async { true } }
     let lyricsToYield: [Lyrics]
 
     func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
@@ -17,6 +18,7 @@ private struct StaticProvider: LyricsProvider {
 }
 
 private struct FailingProvider: LyricsProvider {
+    var isAuthorized: Bool { get async { true } }
     let error: Error
 
     func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {

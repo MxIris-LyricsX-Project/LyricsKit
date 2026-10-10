@@ -29,6 +29,17 @@ extension LyricsProviders.NetEase: _LyricsProvider {
     var isAuthorized: Bool { get async { true } }
 
     func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
+        // An authoritative client record is a direct lookup, never a hint for
+        // title search. Invalid records must fail closed rather than substitute
+        // another edition of the song.
+        if let json = request.userInfo["neteaseExactSong"] {
+            let song = try JSONDecoder().decode(NetEaseResponseSearchResult.Result.Song.self, from: Data(json.utf8))
+            guard song.id > 0, song.duration > 0, !song.name.isEmpty,
+                  !song.artists.isEmpty, !song.album.name.isEmpty else {
+                throw LyricsProviderError.processingFailed(reason: "Invalid exact NetEase song record.")
+            }
+            return [LyricsToken(value: song)]
+        }
         let endpoint = Endpoint(
             scheme: "http",
             host: "music.163.com",

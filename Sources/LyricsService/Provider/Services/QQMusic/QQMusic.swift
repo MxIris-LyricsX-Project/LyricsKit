@@ -30,7 +30,27 @@ extension LyricsProviders.QQMusic: _LyricsProvider {
 
     var isAuthorized: Bool { get async { true } }
 
+    private struct ClientSong: Decodable, QQMusicSongSearchResult {
+        let id: String
+        let mid: String
+        let name: String
+        let singers: [String]
+        let album: String
+        let duration: Double
+    }
+
     func search(for request: LyricsSearchRequest) async throws -> [LyricsToken] {
+        if let json = request.userInfo["qqmusicExactSong"] {
+            let song = try JSONDecoder().decode(ClientSong.self, from: Data(json.utf8))
+            guard let id = Int64(song.id), id > 0, !song.name.isEmpty,
+                  song.mid.range(of: "^[A-Za-z0-9]{1,64}$", options: .regularExpression) != nil,
+                  !song.album.isEmpty, song.duration.isFinite, song.duration > 0,
+                  !song.singers.isEmpty, song.singers.allSatisfy({ !$0.isEmpty }) else {
+                throw LyricsProviderError.processingFailed(reason: "Invalid exact QQMusic song record.")
+            }
+            return [LyricsToken(value: song)]
+        }
+
         let combined = await withTaskGroup(of: [LyricsToken].self) { group in
             group.addTask { await self.searchApi1(for: request) }
             group.addTask { await self.searchApi2(for: request) }

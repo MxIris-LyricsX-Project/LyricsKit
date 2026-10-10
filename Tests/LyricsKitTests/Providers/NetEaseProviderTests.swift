@@ -83,3 +83,71 @@ struct NetEaseProviderTests {
         }
     }
 }
+
+
+struct NetEaseExactSongTests {
+    private func exactRequest(song: String) -> LyricsSearchRequest {
+        LyricsSearchRequest(searchTerm: .info(title: "Test Song", artist: "Test Artist"), duration: 200,
+                            userInfo: ["neteaseExactSong": song])
+    }
+
+    @Test func exactSongNeverSearchesAndRetainsClientID() async throws {
+        let mock = MockHTTPClient()
+        mock.stub(host: "music.163.com", response: .data(try FixtureLoader.data(named: "NetEase/search.json")))
+        mock.stub(hostContains: "interface3.music.163.com", response: .data(try FixtureLoader.data(named: "NetEase/lyrics.json")))
+        let song = #"{"id":222222,"name":"Test Song","duration":200000,"artists":[{"id":1,"name":"Test Artist"}],"album":{"id":2,"name":"Test Album"}}"#
+        let result = try await collect(LyricsProviders.NetEase(httpClient: mock).lyrics(for: exactRequest(song: song)))
+        #expect(result.first?.metadata.serviceToken == "222222")
+        #expect(mock.recorded.count == 1)
+        #expect(mock.recorded.allSatisfy { $0.url?.path == "/eapi/song/lyric/v1" })
+        let body = try #require(mock.recorded.first?.httpBody)
+        let hex = try #require(String(data: body, encoding: .utf8)?.split(separator: "=").last).description
+        var encrypted = Data()
+        var position = hex.startIndex
+        while position < hex.endIndex {
+            let end = hex.index(position, offsetBy: 2)
+            encrypted.append(try #require(UInt8(hex[position..<end], radix: 16)))
+            position = end
+        }
+        let decoded = try NetEaseEapiClient.aesDecryptECB(data: encrypted, key: NetEaseEapiClient.eapiKey)
+        let text = try #require(String(data: decoded, encoding: .utf8))
+        let payload = try #require(text.components(separatedBy: "-36cd479b6b5-").dropFirst().first)
+        let object = try #require(JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any])
+        #expect(object["id"] as? String == "222222")
+    }
+
+    @Test func invalidExactSongDoesNotFallBackToSearch() async throws {
+        let mock = MockHTTPClient()
+        mock.stub(host: "music.163.com", response: .data(try FixtureLoader.data(named: "NetEase/search.json")))
+        mock.stub(hostContains: "interface3.music.163.com", response: .data(try FixtureLoader.data(named: "NetEase/lyrics.json")))
+        do {
+            let result = try await collect(LyricsProviders.NetEase(httpClient: mock).lyrics(for: exactRequest(song: "invalid")))
+            #expect(result.isEmpty)
+        } catch {}
+        #expect(mock.recorded.isEmpty)
+    }
+
+    @Test func emptyExactLyricsDoesNotFallBackToSearch() async throws {
+        let mock = MockHTTPClient()
+        mock.stub(host: "music.163.com", response: .data(try FixtureLoader.data(named: "NetEase/search.json")))
+        mock.stub(hostContains: "interface3.music.163.com", response: .data(try FixtureLoader.data(named: "NetEase/lyrics_empty.json")))
+        let song = #"{"id":222222,"name":"Test Song","duration":200000,"artists":[{"id":1,"name":"Test Artist"}],"album":{"id":2,"name":"Test Album"}}"#
+        let result = try await collect(LyricsProviders.NetEase(httpClient: mock).lyrics(for: exactRequest(song: song)))
+        #expect(result.isEmpty)
+        #expect(mock.recorded.count == 1)
+        #expect(mock.recorded.allSatisfy { $0.url?.host == "interface3.music.163.com" })
+    }
+}
+
+
+extension NetEaseExactSongTests {
+    @Test func exactSongNetworkFailureDoesNotQueryOtherSources() async throws {
+        let mock = MockHTTPClient()
+        mock.stubAny(.error(URLError(.notConnectedToInternet)))
+        let song = #"{"id":222222,"name":"Test Song","duration":200000,"artists":[{"id":1,"name":"Test Artist"}],"album":{"id":2,"name":"Test Album"}}"#
+        let result = try await collect(LyricsProviders.NetEase(httpClient: mock).lyrics(for: exactRequest(song: song)))
+        #expect(result.isEmpty)
+        #expect(mock.recorded.count == 1)
+        #expect(mock.recorded.first?.url?.path == "/eapi/song/lyric/v1")
+    }
+}

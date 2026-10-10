@@ -179,3 +179,38 @@ struct QualityTests {
         #expect(first == second)
     }
 }
+
+struct ClientFallbackMatchTests {
+    @Test func rejectsDifferentSongBySameArtist() {
+        let lyrics = makeLyrics(title: "东方之珠", artist: "罗大佑", length: 261.72)
+        attach(lyrics, searchTitle: "皇后大道东", searchArtist: "罗大佑 & 蒋志光", duration: 254)
+        #expect(!lyrics.isReliableClientFallbackMatch())
+    }
+    @Test func acceptsDuetWithSingleCreditedSinger() {
+        let lyrics = makeLyrics(title: "皇后大道东", artist: "罗大佑", length: 254)
+        attach(lyrics, searchTitle: "皇后大道东", searchArtist: "罗大佑 & 蒋志光", duration: 254)
+        #expect(lyrics.isReliableClientFallbackMatch())
+    }
+    @Test func rejectsDifferentSingerAndMissingTitle() {
+        for title in ["皇后大道东", nil] {
+            let lyrics = makeLyrics(title: title, artist: "其他歌手")
+            attach(lyrics, searchTitle: "皇后大道东", searchArtist: "罗大佑 & 蒋志光")
+            #expect(!lyrics.isReliableClientFallbackMatch())
+        }
+    }
+    @Test func rejectsSubstringSongTitle() {
+        let lyrics = makeLyrics(title: "爱", artist: "歌手")
+        attach(lyrics, searchTitle: "爱如火", searchArtist: "歌手")
+        #expect(!lyrics.isReliableClientFallbackMatch())
+    }
+    @Test func rejectsDifferentDurationWhenAvailable() {
+        let lyrics = makeLyrics(title: "皇后大道东", artist: "罗大佑", length: 300)
+        attach(lyrics, searchTitle: "皇后大道东", searchArtist: "罗大佑", duration: 254)
+        #expect(!lyrics.isReliableClientFallbackMatch())
+    }
+    @Test func handlesSpacingAndVersionSuffix() {
+        let lyrics = makeLyrics(title: "Song (Live)", artist: "Singer A/Singer B")
+        attach(lyrics, searchTitle: "Song", searchArtist: "Singer A & Singer B")
+        #expect(lyrics.isReliableClientFallbackMatch())
+    }
+}
