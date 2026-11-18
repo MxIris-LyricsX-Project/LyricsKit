@@ -10,6 +10,7 @@ Lyrics submodule for [LyricsX](https://github.com/ddddxxx/LyricsX).
 - LRCLIB
 - Spotify
 - Musixmatch
+- Apple Music (word-timed lyrics; requires a `media-user-token`)
 - <del>TTPod</del>
 - <del>Gecimi</del>
 - <del>Syair</del>
@@ -46,6 +47,24 @@ provider.lyricsPublisher(request: searchReq).sink { lyrics in
 #### Musixmatch source requires a token
 
 The method for retrieving lyrics from Musixmatch is adapted from [LyricsPlus](https://github.com/spicetify/cli/tree/main/CustomApps/lyrics-plus). To use this feature properly, you need to follow the steps provided [here](https://gist.github.com/TrueMyst/0461aea999e347182486934fd83a4cf9) or [here](https://spicetify.app/docs/faq#sometimes-popup-lyrics-andor-lyrics-plus-seem-to-not-work) to obtain a usertoken.
+
+#### Apple Music source requires a media-user-token
+
+The Apple Music source fetches Apple Music's word-timed lyrics, which amp-api serves only with the `media-user-token` cookie of a session signed in on [music.apple.com](https://music.apple.com). Ask whether Apple Music accepts a token before adding the provider:
+
+```swift
+let options = LyricsProviders.AppleMusicOptions(mediaUserToken: token)
+switch await LyricsProviders.Service.appleMusic.authorizationStatus(for: options) {
+case .authorized(let storefront):        // the account's storefront, such as "jp"
+    providers.append(LyricsProviders.Service.appleMusic.create(options))
+case .denied:                            // mistyped, expired, or signed out
+    break
+case .couldNotDetermine(let reason):     // no network, or the web player changed
+    print(reason)
+}
+```
+
+`AppleMusicAuthorizationLiveProbes` checks the status codes this relies on against the real amp-api; it runs only with `LYRICSKIT_LIVE_NETWORK=1 swift test --filter AppleMusicAuthorizationLiveProbes`.
 
 ## License
 
