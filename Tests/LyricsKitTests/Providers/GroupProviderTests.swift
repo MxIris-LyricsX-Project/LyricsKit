@@ -6,6 +6,8 @@ import Foundation
 private struct StaticProvider: LyricsProvider {
     let lyricsToYield: [Lyrics]
 
+    var isAuthorized: Bool { get async { true } }
+
     func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
         AsyncThrowingStream { continuation in
             for lyric in lyricsToYield {
@@ -18,6 +20,8 @@ private struct StaticProvider: LyricsProvider {
 
 private struct FailingProvider: LyricsProvider {
     let error: Error
+
+    var isAuthorized: Bool { get async { true } }
 
     func lyrics(for request: LyricsSearchRequest) -> AsyncThrowingStream<Lyrics, Error> {
         AsyncThrowingStream { continuation in

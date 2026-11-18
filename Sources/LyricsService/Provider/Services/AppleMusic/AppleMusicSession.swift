@@ -44,9 +44,10 @@ actor AppleMusicSession {
 
     // MARK: - Per-instance state
 
-    /// Last result of the lightweight authorization probe — recomputed on
-    /// demand the first time `isAuthorized()` is called.
-    private var authorizedCache: Bool?
+    /// Last verdict of the authorization probe — computed on demand the
+    /// first time `authorizationStatus()` is called. Only `authorized` and
+    /// `denied` are kept: `couldNotDetermine` is transient and asked again.
+    private var authorizationStatusCache: LyricsProviders.AppleMusicAuthorizationStatus?
 
     private let urlSession: URLSession
 
@@ -72,28 +73,37 @@ actor AppleMusicSession {
 
     // MARK: - Authorization probe
 
-    /// Whether amp-api accepts the configured `media-user-token`.
+    /// What amp-api makes of the configured `media-user-token`.
     ///
-    /// Cached per-instance. The probe hits `/v1/me/storefront` once, so
-    /// later `musicAPI()` calls for user-context paths can short-circuit
-    /// on failure (LyricsX uses this to decide whether to mount the
-    /// Apple Music provider at all).
+    /// Asks `/v1/me/storefront` (see `AppleMusicAuthorizationProbe` for how
+    /// its answers are read). A missing or empty token is `denied` without
+    /// a request.
+    func authorizationStatus() async -> LyricsProviders.AppleMusicAuthorizationStatus {
+        if let authorizationStatusCache { return authorizationStatusCache }
+        guard let mediaUserToken, !mediaUserToken.isEmpty else {
+            authorizationStatusCache = .denied
+            return .denied
+        }
+        let status = await AppleMusicAuthorizationProbe.status(
+            requestingStorefront: { try await self.send("/v1/me/storefront") },
+            refreshingDeveloperToken: { await AppleMusicDeveloperTokenCache.shared.invalidate() }
+        )
+        switch status {
+        case .authorized:
+            authorizationStatusCache = status
+        case .denied:
+            Logger.AppleMusic.info("authorization probe: amp-api refused the media-user-token")
+            authorizationStatusCache = status
+        case .couldNotDetermine(let reason):
+            Logger.AppleMusic.info("authorization probe reached no verdict: \(reason, privacy: .public)")
+        }
+        return status
+    }
+
+    /// Whether amp-api accepts the configured `media-user-token`.
     func isAuthorized() async -> Bool {
-        if let cached = authorizedCache { return cached }
-        guard mediaUserToken != nil else {
-            authorizedCache = false
-            return false
-        }
-        do {
-            _ = try await musicAPI("/v1/me/storefront")
-            authorizedCache = true
-            return true
-        } catch {
-            Logger.AppleMusic.info(
-                "authorization probe failed: \(String(describing: error), privacy: .public)")
-            authorizedCache = false
-            return false
-        }
+        if case .authorized = await authorizationStatus() { return true }
+        return false
     }
 
     // MARK: - amp-api
@@ -108,6 +118,29 @@ actor AppleMusicSession {
     ///   response (carries the API's error description when available),
     ///   `AppleMusicError.unexpectedResponse` on malformed URLs.
     func musicAPI(_ path: String) async throws -> Data {
+        let response = try await send(path)
+        if (200..<300).contains(response.statusCode) {
+            return response.body
+        }
+
+        // Non-2xx: 401/403 usually means the user token expired or the
+        // developer token rolled. Drop both caches so the next call
+        // refetches the developer token and re-probes authorization.
+        if response.statusCode == 401 || response.statusCode == 403 {
+            await AppleMusicDeveloperTokenCache.shared.invalidate()
+            authorizationStatusCache = nil
+        }
+        let description = AppleMusicAPIErrorParser.describe(data: response.body, status: response.statusCode)
+        throw AppleMusicError.api(description)
+    }
+
+    /// Issue an amp-api GET and return whatever it answered, without
+    /// treating a non-2xx status as an error.
+    ///
+    /// - Throws: whatever fetching the developer token or the transport
+    ///   throws, and `AppleMusicError.unexpectedResponse` on a malformed
+    ///   URL or a non-HTTP response.
+    func send(_ path: String) async throws -> AppleMusicAPIResponse {
         let developerToken = try await AppleMusicDeveloperTokenCache.shared.ensureToken()
         guard let url = URL(string: "https://amp-api.music.apple.com" + path) else {
             throw AppleMusicError.unexpectedResponse
@@ -128,20 +161,7 @@ actor AppleMusicSession {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AppleMusicError.unexpectedResponse
         }
-
-        if (200..<300).contains(httpResponse.statusCode) {
-            return data
-        }
-
-        // Non-2xx: 401/403 usually means the user token expired or the
-        // developer token rolled. Drop both caches so the next call
-        // refetches the developer token and re-probes authorization.
-        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-            await AppleMusicDeveloperTokenCache.shared.invalidate()
-            authorizedCache = nil
-        }
-        let description = AppleMusicAPIErrorParser.describe(data: data, status: httpResponse.statusCode)
-        throw AppleMusicError.api(description)
+        return AppleMusicAPIResponse(statusCode: httpResponse.statusCode, body: data)
     }
 }
 
@@ -312,7 +332,7 @@ private enum AppleMusicTokenScraper {
     }
 }
 
-private enum AppleMusicAPIErrorParser {
+enum AppleMusicAPIErrorParser {
     /// Pull a human-readable error string out of amp-api's `{errors:[…]}`
     /// envelope, falling back to the status code when the body is empty.
     static func describe(data: Data, status: Int) -> String {

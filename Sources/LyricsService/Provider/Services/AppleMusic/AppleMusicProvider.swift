@@ -181,8 +181,7 @@ extension LyricsProviders.AppleMusic: _LyricsProvider {
             return override
         }
         let data = try await session.musicAPI("/v1/me/storefront")
-        let wrapper = try JSONDecoder().decode(MusicKitWrapper<StorefrontResponse>.self, from: data)
-        guard let id = wrapper.unwrapped.data.first?.id else {
+        guard let id = AppleMusicStorefrontResponse.storefrontIdentifier(in: data) else {
             throw AppleMusicError.unexpectedResponse
         }
         return id
@@ -250,11 +249,24 @@ private struct MusicKitWrapper<Payload: Decodable>: Decodable {
     }
 }
 
-private struct StorefrontResponse: Decodable {
-    let data: [Storefront]
+/// `/v1/me/storefront`'s answer, read by both the provider and the
+/// authorization probe.
+enum AppleMusicStorefrontResponse {
+    /// The first storefront identifier in `body`, such as `"jp"`, or `nil`
+    /// when the body carries none.
+    static func storefrontIdentifier(in body: Data) -> String? {
+        guard let wrapper = try? JSONDecoder().decode(MusicKitWrapper<Payload>.self, from: body) else {
+            return nil
+        }
+        return wrapper.unwrapped.data.first?.id
+    }
 
-    struct Storefront: Decodable {
-        let id: String
+    private struct Payload: Decodable {
+        let data: [Storefront]
+
+        struct Storefront: Decodable {
+            let id: String
+        }
     }
 }
 
